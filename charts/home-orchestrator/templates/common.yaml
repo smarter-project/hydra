@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application.appName }}
+  labels:
+    name: {{ .Values.application.appName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.application.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.application.appName }}
+    spec: 
+      hostname: {{ .Values.application.appName }}
+      hostNetwork: false
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: {{ .Values.application.appName }}
+        image: {{ .Values.application.image }}:{{ .Values.application.imageVersion }}
+        env:
+        - name: OLLAMA_HOST_URL
+          value: http://{{ .Values.configuration.nameHost }}:{{ .Values.configuration.portHost }}
+        - name: OLLAMA_GUEST_URL
+          value: http://{{ .Values.configuration.nameGuest }}:{{ .Values.configuration.portGuest }}
+        - name: OLLAMA_MODEL
+          value: {{ .Values.configuration.model }}
+        - name: OLLAMA_MAX_RETRIES
+          value: "300"
+        - name: OLLAMA_WAIT_FOREVER
+          value: "1"
+        command: ["/app/initial_setup.sh"]
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application.appName }}-ollama
+  labels:
+    name: {{ .Values.application.appName }}-ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.application.appName }}-ollama
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.application.appName }}-ollama
+    spec: 
+      hostname: {{ .Values.application.appName }}-ollama
+      hostNetwork: false
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: ollama-host
+        image: ollama/ollama:{{ .Values.configuration.ollamaVersion }}
+        env:
+        - name: OLLAMA_HOST
+          value: http://0.0.0.0:{{ .Values.configuration.portHost }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: models
+            mountPath: /root/.ollama
+      - name: ollama-guest
+        image: ollama/ollama:{{ .Values.configuration.ollamaVersion }}
+        env:
+        - name: OLLAMA_HOST
+          value: http://0.0.0.0:{{ .Values.configuration.portGuest }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: models
+            mountPath: /root/.ollama
+      volumes:
+        - name: models
+          hostPath:
+            path: {{ .Values.configuration.hostVolumePath }}:/root/.ollama
+      terminationGracePeriodSeconds: 30
+---
+#            path: /srv/shared-container-volumes/ollama:/root/.ollama
+#  apiVersion: v1
+#  kind: Service
+#  metadata:
+#    name: {{ .Values.application.appName }}-ollama-host-node
+#  spec:
+#    type: NodePort
+#    selector:
+#      app: {{ .Values.application.appName }}-ollama
+#    ports:
+#      - port: {{ .Values.configuration.portHost }}
+#        targetPort: {{ .Values.configuration.portHost }}
+#        nodePort: {{ .Values.configuration.portHost }}
+#  ---
+#  apiVersion: v1
+#  kind: Service
+#  metadata:
+#    name: {{ .Values.application.appName }}-ollama-guest-node
+#  spec:
+#    type: NodePors
+#    selector:
+#      app: {{ .Values.application.appName }}-ollama
+#    ports:
+#      - port: {{ .Values.configuration.portGuest }}
+#        targetPort: {{ .Values.configuration.portGuest }}
+#        nodePort: {{ .Values.configuration.portGuest }}
+#  ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.configuration.nameHost }}
+spec:
+  selector:
+    app: {{ .Values.application.appName }}-ollama
+  ports:
+    - port: {{ .Values.configuration.portHost }}
+      targetPort: {{ .Values.configuration.portHost }}
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.configuration.nameGuest }}
+spec:
+  selector:
+    app: {{ .Values.application.appName }}-ollama
+  ports:
+    - port: {{ .Values.configuration.portGuest }}
+      targetPort: {{ .Values.configuration.portGuest }}
+      protocol: TCP
