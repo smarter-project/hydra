@@ -6,9 +6,15 @@ The script runs under MacOS, Linux, docker and k3s.
 
 # Requirements
 
-## Linux and MacOS
+## Linux 
     - QEMU
+    - wget
 
+## MacOS
+    - Homebrew (strongly suggested)
+    - QEMU
+    - wget
+    
 ## Docker
     - docker installed on the host
 
