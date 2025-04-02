@@ -31,6 +31,7 @@ function modify_existing_k3s() {
 	if [ ! -z "${CONTAINER_RUNTIME}" ]
 	then
 		echo "k3s service already modified"
+		K3S_MODIFIED=0
 	else
 		if [ -f "${K3S_SERVICE_FILE}".old ]
 		then
@@ -42,6 +43,7 @@ function modify_existing_k3s() {
 		sed -e "s#^\([ \t]*\)\(server \)\([\]\)#\1\2\3\n\1    '--container-runtime-endpoint'  '${CRISMUX_SOCKET_FILE}' \3#"  \
 		    -e "s#^\(After=network-online.target\)#\1\nAfter=crismux#" \
 			"${K3S_SERVICE_FILE}".old > "${K3S_SERVICE_FILE}"
+		K3S_MODIFIED=1
 	fi
 }
 
@@ -60,7 +62,7 @@ function revert_existing_k3s() {
 	then
 		echo "k3s service not modified so not changing anything"
 		rm "${K3S_SERVICE_FILE}".old 2>/dev/null
-		K3S_MOIFIED=0
+		K3S_MODIFIED=0
 	else
 		if [ ! -f "${K3S_SERVICE_FILE}".old ]
 		then
@@ -69,7 +71,7 @@ function revert_existing_k3s() {
 		fi
 
 		mv "${K3S_SERVICE_FILE}".old "${K3S_SERVICE_FILE}"
-		K3S_MOIFIED=1
+		K3S_MODIFIED=1
 	fi
 }
 
@@ -242,7 +244,7 @@ TasksMax=infinity
 TimeoutStartSec=0
 Restart=always
 RestartSec=5s
-ExecStartPre=/bin/sh -xc 'rm ${CRISMUX_SOCKET_FILE}'
+ExecStartPre=/bin/sh -xc 'rm -f ${CRISMUX_SOCKET_FILE}'
 ExecStart=${CRISMUX_EXECUTABLE_FILE} \
 	'-config' \
 	'${CRISMUX_CONFIG_FILE}' \
@@ -300,9 +302,9 @@ function check_crismux() {
 }
 
 function start_services() {
-	systemctl deamon-reload
-	systemctl enable containerd-k3s crismux
 	systemctl stop k3s
+	systemctl daemon-reload
+	systemctl enable containerd-k3s crismux
 	systemctl start k3s containerd-k3s crismux
 }
 
@@ -319,7 +321,7 @@ function stop_service() {
 		systemctl disable $1
 	fi
 	STATUS_STATE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2)
-	if [ "x${STATUS_STATE}" == "xActive" ]
+	if [ "x${STATUS_STATE}" == "xactive" ]
 	then
 		systemctl stop $1
 	fi
@@ -343,6 +345,15 @@ function execute_install() {
 	modify_existing_k3s
 	add_containerd
 	add_crismux
+	: ${K3S_MODIFIED:=0}
+	if [ ${K3S_MODIFIED} -gt 0 ]
+	then
+		start_services
+	else
+		report_status_service k3s
+		report_status_service crismux
+		report_status_service containerd-k3s
+	fi
 }
 
 function execute_verify() {
@@ -363,8 +374,9 @@ function execute_clean() {
 	: ${K3S_MODIFIED:=0}
 	if [ ${K3S_MODIFIED} -gt 0 ]
 	then
+		systemd stop k3s
 		systemd daemon-reload
-		systemd restart k3s
+		systemd start k3s
 	fi
 }
 
