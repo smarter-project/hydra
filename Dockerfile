@@ -12,4 +12,4 @@ COPY initial_setup.sh .
 RUN chmod +x initial_setup.sh
 
 # Set the entrypoint
-ENTRYPOINT ["./initial_setup.sh"] 
+ENTRYPOINT ["./start-vm.sh"] 

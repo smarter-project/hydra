@@ -4,9 +4,41 @@ This module starts a VM running debian 12 with containerd and enables access to 
 It runs the VM using QEMU and acceleration if possible. 
 The script runs under MacOS, Linux, docker and k3s. 
 
-## Motivation
+# Requirements
 
-## Usage
+## Linux and MacOS
+    - QEMU
+
+## Docker
+    - docker installed on the host
+
+## K3s
+    - running installation of K3s
+
+# Motivation
+
+# Usage
+
+## Linux and MacOS
+
+### TL;DR
+clone the repository and run the script
+```
+git clone https://github.com/smarter-project/hydra
+cd hydra
+./start-vm.sh
+```
+
+### Details
+
+The directory "image" located on the directory that start-vm.sh was run will be used to store the image for the VM. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
+Removing the directory or the qcow2 file inside the image directory will download and configured.
+Containerd CRI will be available at localhost port 35000.
+A csi-proxy or crismux running on the host can be used to convert that port to a socket if required.
+
+The image will be resized automatically according to the sizes provided. The image will not be reduced in size.
+
+The QEMU will use acceleration if available.
 
 THe following variables configures the script:
 
@@ -35,4 +67,27 @@ THe following variables configures the script:
 | `QEMU_BIOS` | `DEFAULT_QEMU_<OS>_BIOS` | BIOS to use |
 | `QEMU_MACHINE_TYPE` | use "virt" or ""pc" | QEMU machine type |
 
-Executing directly it will start a VM with QEMU using acceleration if possible.
+## Docker
+
+### TL;DR
+```
+docker run grhc.io/smarter-project/hydra 
+```
+
+with accelleration
+
+```
+docker run --device /dev/kvm:/dev/kvm grhc.io/smarter-project/hydra 
+```
+
+### Details
+
+If the image directory is not a shared directory with the host, the VM state will not be preserved in multiple runs
+use:
+```
+docker run -v image:/root/image --device /dev/kvm:/dev/kvm grhc.io/smarter-project/hydra
+```
+to preserve VM image.
+
+
+Containerd will be available at the IP of the containerd port 35000
