@@ -13,8 +13,16 @@ case ${ARCH_M} in
 	*)
 		ARCH=${ARCH_M};;
 esac
+: ${DISABLE_9P_MOUNTS:=0}
+: ${COPY_IMAGE_BACKUP:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
+: ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
+: ${KERNEL_VERSION:="linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}"}
 : ${DEFAULT_DIR_IMAGE:=$(pwd)/image}
+: ${DEFAULT_DIR_K3S_VAR_DARWIN:=$(pwd)/k3s-var}
+: ${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT:=$(pwd)/k3s-var}
+: ${DEFAULT_DIR_K3S_VAR_LINUX_ROOT:=""}
+: ${DEFAULT_DIR_K3S_VAR_OTHER:=$(pwd)/k3s-var}
 : ${DEFAULT_SOURCE_IMAGE:="https://cloud.debian.org/images/cloud/bookworm/20250316-2053/"}
 : ${DEFAULT_QEMU_DARWIN_CPU:=2}
 : ${DEFAULT_QEMU_DARWIN_MEMORY:=2}
@@ -34,6 +42,21 @@ esac
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 
 IMAGE_DOWNLOADED=0
+
+function check_requirements() {
+	QEMU_EXECUTABLE=$(type qemu-system-${ARCH_M} 2>/dev/null)
+	if [ -z "${QEMU_EXECUTABLE}" ]
+	then
+		echo "QEMU not available , please install qemu-system"
+		exit 1
+	fi
+	MKISOFS_EXECUTABLE=$(type mkisofs 2>/dev/null)
+	if [ -z "${MKISOFS_EXECUTABLE}" ]
+	then
+		echo "mkisofs not available , please install mkisofs"
+		exit 1
+	fi
+}
 
 function check_qemu_kvm_hvf() {
 
@@ -83,6 +106,7 @@ function check_qemu_kvm_hvf() {
 }
 
 function check_image_exists() {
+	[ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
 	if [  ! -d "${DEFAULT_DIR_IMAGE}" ]
 	then
 		echo "Image directory '${DEFAULT_DIR_IMAGE}' does not exist, trying to create"
@@ -108,6 +132,7 @@ function check_image_exists() {
 			exit 1
 		fi
 		IMAGE_DOWNLOADED=1
+		[ ${COPY_IMAGE_BACKUP} -gt 0 ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp
 	fi
 }
 
@@ -221,6 +246,16 @@ function check_cloud_init_create() {
 EOF
 		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 #cloud-config
+EOF
+		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+                then
+                        cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+mounts:
+- [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
+- [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
+EOF
+                fi
+                cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 users:
 - default
 - name: vm-user
@@ -236,6 +271,8 @@ package_update: true
 package_upgrade: true
 packages:
 - containerd
+- 9mount
+- ${KERNEL_VERSION}
 write_files:
 - content: |
     [Unit]
@@ -273,6 +310,16 @@ runcmd:
 - [ systemctl, enable, csi-grpc-proxy.service ]
 - [ systemctl, start, csi-grpc-proxy.service ]
 EOF
+		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+                then
+                        cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ mkdir,"-p","/var/lib/kubelet","/var/log/pods" ]
+- [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
+- [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
+- [ mount, "host0"]
+- [ mount, "host1"]
+EOF
+                fi
 		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/vendor-data" <<EOF
 EOF
 		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/network-config" <<EOF
@@ -330,11 +377,47 @@ function check_ports_redirection() {
 	fi
 }
 
+function check_k3s_log_pods_dir() {
+	if [ ${DISABLE_9P_MOUNTS} -gt 0 ]
+	then
+		return
+	fi
+	case ${OS} in
+		Darwin)
+			: ${DIR_K3S_VAR:=${DEFAULT_DIR_K3S_VAR_DARWIN}}
+			;;
+		GNU/Linux)
+			if [ "x${USER}" == "xroot" ]
+			then
+				: ${DIR_K3S_VAR:=${DEFAULT_DIR_K3S_VAR_LINUX_ROOT}}
+			else
+				: ${DIR_K3S_VAR:=${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT}}
+			fi
+			;;
+		*)
+			: ${DIR_K3S_VAR:=${DEFAULT_DIR_K3S_VAR_OTHER}}
+			;;
+	esac
+	if [ ! -z "${DIR_K3S_VAR}" ]
+	then
+		if [ ! -d "${DIR_K3S_VAR}/var/lib/kubelet" -o ! -d "${DIR_K3S_VAR}/var/log/pods" ]
+		then
+			mkdir -p "${DIR_K3S_VAR}/var/lib/kubelet" "${DIR_K3S_VAR}/var/log/pods"
+		fi
+	fi
+}
+
+# ----- Main
+
+check_requirements
+
 check_ports_redirection
 
 check_qemu_kvm_hvf
 
 check_image_exists
+
+check_k3s_log_pods_dir
 
 check_qemu_memory_cpu
 
@@ -348,7 +431,14 @@ then
 	BIOS_OPTION="-bios ${QEMU_BIOS}"
 fi
 
-echo qemu-system-${ARCH_M} \
+VIRTFS_9P=""
+if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+then
+	VIRTFS_9P=" -virtfs local,path=${DIR_K3S_VAR}/var/lib/kubelet,mount_tag=host0,security_model=passthrough,id=host0  \
+		   -virtfs local,path=${DIR_K3S_VAR}/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1 " 
+fi
+
+echo "qemu-system-${ARCH_M} \
 	-m ${QEMU_MEMORY}g \
 	-smp ${QEMU_CPU} \
 	-M ${QEMU_MACHINE_TYPE} \
@@ -361,8 +451,8 @@ echo qemu-system-${ARCH_M} \
 	-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
 	-netdev user,id=net0${REDIRECT_PORT} \
 	-serial mon:stdio \
- 	-nographic
-
+	${VIRTFS_9P} \
+ 	-nographic"
 
 qemu-system-${ARCH_M} \
 	-m ${QEMU_MEMORY}g \
@@ -376,6 +466,7 @@ qemu-system-${ARCH_M} \
 	-device virtio-blk-pci,drive=hd0 \
 	-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
 	-netdev user,id=net0${REDIRECT_PORT} \
+	${VIRTFS_9P} \
  	-nographic
 
 exit 0
