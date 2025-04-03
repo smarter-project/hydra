@@ -35,6 +35,17 @@ cd hydra
 ./start-vm.sh
 ```
 
+## Docker
+
+### TL;DR
+```
+docker run -d -v /var/lib/kubelet:/var/lib/kubelet -v /var/log/pods:/var/log/pods --device /dev/kvm isolatedvm
+```
+or use this one if want to preserve the image 
+```
+docker run -d -v /var/lib/kubelet:/var/lib/kubelet -v /var/log/pods:/var/log/pods -v images:/root/images --device /dev/kvm isolatedvm
+```
+
 ### Details
 
 The directory "image" located on the directory that start-vm.sh was run will be used to store the image for the VM. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
@@ -50,6 +61,15 @@ THe following variables configures the script:
 
 | Variable | Default value | Usage |
 | -------- | ------------- | ----- |
+| `DISABLE_9P_MOUNTS` | 0 | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods |
+| `COPY_IMAGE_BACKUP` | 0 | if > 0 preserve a copy of the image and start form a copy of that image if it exists |
+| `DEFAULT_KERNEL_VERSION` | `6.12.12+bpo | kernel version to install |
+| `KERNEL_VERSION` | `linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}` | full version to install if a different kernel is required |
+| `DEFAULT_DIR_IMAGE` | `$(pwd)/image` | Where to store the downloaded image |
+| `DEFAULT_DIR_K3S_VAR_DARWIN` | `$(pwd)/k3s-var` | Where to point the 9p mounts if running on MacOS |
+| `DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT` | `$(pwd)/k3s-var` | Where to point the 9p mounts if running on Linux as a non-root user |
+| `DEFAULT_DIR_K3S_VAR_LINUX_ROOT` | | Where to point the 9p mounts if running on linux machine as root (or inside a container ) |
+| `DEFAULT_DIR_K3S_VAR_OTHER` | `$(pwd)/k3s-var` | Where to point the 9p mounts if running on other OS machine |
 | `DEFAULT_IMAGE` | `debian-12-genericcloud-${ARCH}-20250316-2053.qcow2` | QCOW image to use as base |
 | `DEFAULT_SOURCE_IMAGE` | `https://cloud.debian.org/images/cloud/bookworm/20250316-2053/` | where to download QCOW image |
 | `DEFAULT_DIR_IMAGE` | `$(pwd)/image` | Directory to use to store image and artifacts |
