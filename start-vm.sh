@@ -303,12 +303,23 @@ write_files:
     [Install]
     WantedBy=multi-user.target
   path: /etc/systemd/system/csi-grpc-proxy.service
+- content: |
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly]
+            privileged_without_host_devices = false
+            runtime_type = "io.containerd.runc.v2"
+    
+            [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly.options]
+              BinaryName = "/usr/sbin/runc"
+              NoPivotRoot = true
+              CriuImagePath = ""
+              CriuPath = ""
+              CriuWorkPath = ""
+              IoGid = 0
+  path: /etc/containerd/config.toml.new
 runcmd:
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
-- [ systemctl, daemon-reload ]
-- [ systemctl, enable, csi-grpc-proxy.service ]
-- [ systemctl, start, csi-grpc-proxy.service ]
+- [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
 EOF
 		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
                 then
@@ -320,6 +331,12 @@ EOF
 - [ mount, "host1"]
 EOF
                 fi
+		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ systemctl, daemon-reload ]
+- [ systemctl, restart, containerd ]
+- [ systemctl, enable, csi-grpc-proxy.service ]
+- [ systemctl, start, csi-grpc-proxy.service ]
+EOF
 		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/vendor-data" <<EOF
 EOF
 		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/network-config" <<EOF
