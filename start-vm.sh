@@ -17,6 +17,11 @@ esac
 : ${COPY_IMAGE_BACKUP:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
 : ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
+: ${VM_USERNAME:="vm-user"}
+: ${VM_PASSWORD:="vm-user"}
+: ${VM_PASSWORD_ENCRYPTED:=""}
+: ${VM_HOSTNAME:="vm-host"}
+: ${VM_SSH_AUTHORIZED_KEY:=""}
 : ${KERNEL_VERSION:="linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}"}
 : ${DEFAULT_DIR_IMAGE:=$(pwd)/image}
 : ${DEFAULT_DIR_K3S_VAR_DARWIN:=$(pwd)/k3s-var}
@@ -256,16 +261,26 @@ mounts:
 - [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
                 fi
+		: ${VM_PASSWORD_ENCRYPTED:=$(echo ${VM_PASSWORD} | openssl passwd -6 -stdin)}
                 cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 users:
 - default
-- name: vm-user
-  primary_group: vm-user
+- name: ${VM_USERNAME}
+  primary_group: ${VM_USERNAME}r
   groups: users, admin
   sudo: ALL=(ALL) NOPASSWD:ALL
   lock_passwd: false
-  passwd: $(echo "vm-user" | openssl passwd -6 -stdin)
-hostname: testhost
+  passwd: ${VM_PASSWORD_ENCRYPTED}
+EOF
+		if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
+		then 
+			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+  ssh_authorized_keys:
+      - ${VM_SSH_AUTHORIZED_KEY}
+EOF
+		fi
+                cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+hostname: ${VM_HOSTNAME}
 create_hostname_file: true
 package_reboot_if_required: true
 package_update: true
