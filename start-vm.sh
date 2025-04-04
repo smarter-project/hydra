@@ -24,31 +24,31 @@ esac
 : ${DEFAULT_DIR_K3S_VAR_LINUX_ROOT:=""}
 : ${DEFAULT_DIR_K3S_VAR_OTHER:=$(pwd)/k3s-var}
 : ${DEFAULT_SOURCE_IMAGE:="https://cloud.debian.org/images/cloud/bookworm/20250316-2053/"}
-: ${DEFAULT_QEMU_DARWIN_CPU:=2}
-: ${DEFAULT_QEMU_DARWIN_MEMORY:=2}
-: ${DEFAULT_QEMU_LINUX_CPU:=2}
-: ${DEFAULT_QEMU_LINUX_MEMORY:=2}
-: ${DEFAULT_QEMU_UNKNOWN_CPU:=2}
-: ${DEFAULT_QEMU_UNKNOWN_MEMORY:=2}
-: ${DEFAULT_QEMU_DISK_SIZE:=3}
-: ${DEFAULT_QEMU_DARWIN_BIOS:="/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH_M}-code.fd"}
-: ${DEFAULT_QEMU_LINUX_v9_BIOS:=""}
-: ${DEFAULT_QEMU_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
-#: ${DEFAULT_QEMU_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
-: ${DEFAULT_QEMU_UNKNWON_BIOS:=""}
+: ${DEFAULT_KVM_DARWIN_CPU:=2}
+: ${DEFAULT_KVM_DARWIN_MEMORY:=2}
+: ${DEFAULT_KVM_LINUX_CPU:=2}
+: ${DEFAULT_KVM_LINUX_MEMORY:=2}
+: ${DEFAULT_KVM_UNKNOWN_CPU:=2}
+: ${DEFAULT_KVM_UNKNOWN_MEMORY:=2}
+: ${DEFAULT_KVM_DISK_SIZE:=3}
+: ${DEFAULT_KVM_DARWIN_BIOS:="/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH_M}-code.fd"}
+: ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
+: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
+#: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
+: ${DEFAULT_KVM_UNKNWON_BIOS:=""}
 # If these values are empty, the ports will not be redirected.
-: ${DEFAULT_QEMU_HOST_SSHD_PORT:="5555"}
-: ${DEFAULT_QEMU_HOST_CONTAINERD_PORT:="35000"}
+: ${DEFAULT_KVM_HOST_SSHD_PORT:="5555"}
+: ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
-: ${DEFAULT_QEMU_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by coma
+: ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by coma
 
 IMAGE_DOWNLOADED=0
 
 function check_requirements() {
-	QEMU_EXECUTABLE=$(type qemu-system-${ARCH_M} 2>/dev/null)
-	if [ -z "${QEMU_EXECUTABLE}" ]
+	KVM_EXECUTABLE=$(type qemu-system-${ARCH_M} 2>/dev/null)
+	if [ -z "${KVM_EXECUTABLE}" ]
 	then
-		echo "QEMU not available , please install qemu-system"
+		echo "${KVM_EXECUTABLE} not available , please install it"
 		exit 1
 	fi
 	MKISOFS_EXECUTABLE=$(type mkisofs 2>/dev/null)
@@ -59,7 +59,7 @@ function check_requirements() {
 	fi
 }
 
-function check_qemu_kvm_hvf() {
+function check_kvm_kvm_hvf() {
 
 	if [ "${OS}" == "GNU/Linux" ]
 	then
@@ -68,16 +68,16 @@ function check_qemu_kvm_hvf() {
 		then
 			echo "KVM available"
 			HW_ACCEL="-accel kvm"
-			: ${QEMU_CPU_TYPE:="host"}
+			: ${KVM_CPU_TYPE:="host"}
 		else
 			echo "KVM not available, running without acceleration"
 			case ${ARCH_M} in
 				x86_64|amd64)
-					: ${QEMU_CPU_TYPE:="qemu64-v1"};;
+					: ${KVM_CPU_TYPE:="qemu64-v1"};;
 				arm64|aarch64)
-					: ${QEMU_CPU_TYPE:="cortex-a76"};;
+					: ${KVM_CPU_TYPE:="cortex-a76"};;
 				*)
-					: ${QEMU_CPU_TYPE:="qemu64-v1"};;
+					: ${KVM_CPU_TYPE:="qemu64-v1"};;
 			esac
 		fi
 	elif [ "${OS}" == "Darwin" ]
@@ -88,20 +88,20 @@ function check_qemu_kvm_hvf() {
 		then
 			echo "HVF available"
 			HW_ACCEL="-accel hvf"
-			: ${QEMU_CPU_TYPE:="host"}
+			: ${KVM_CPU_TYPE:="host"}
 		else
 			echo "HVF not available, running without acceleration"
-			: ${QEMU_CPU_TYPE:="cortex-a76"}
+			: ${KVM_CPU_TYPE:="cortex-a76"}
 		fi
 	else
 		echo "Unknownn OS '${OS}', running without acceleration"
 		case ${ARCH_M} in
 			x86_64|amd64)
-				: ${QEMU_CPU_TYPE:="qemu64-v1"};;
+				: ${KVM_CPU_TYPE:="qemu64-v1"};;
 			arm64|aarch64)
-				: ${QEMU_CPU_TYPE:="cortex-a76"};;
+				: ${KVM_CPU_TYPE:="cortex-a76"};;
 			*)
-				: ${QEMU_CPU_TYPE:="qemu64-v1"};;
+				: ${KVM_CPU_TYPE:="qemu64-v1"};;
 		esac
 	fi
 }
@@ -137,96 +137,96 @@ function check_image_exists() {
 	fi
 }
 
-function check_qemu_memory_cpu() {
+function check_kvm_memory_cpu() {
 	# check qemu version and if is available
 	#
-	QEMU_OUTPUT=$(qemu-system-${ARCH_M} --version)
+	KVM_OUTPUT=$(qemu-system-${ARCH_M} --version)
 	if [ $? -ne 0 ]
 	then
 		echo "Error getting version from QEMU"
 		exit 1
 	fi
-	QEMU_VERSION=$(echo "${QEMU_OUTPUT}" | grep "QEMU emulator version" | cut -d " " -f 4)
-	if [ -z "${QEMU_VERSION}" ]
+	KVM_VERSION=$(echo "${KVM_OUTPUT}" | grep "QEMU emulator version" | cut -d " " -f 4)
+	if [ -z "${KVM_VERSION}" ]
 	then
-		echo "Could not determine version of qemu, got this ${QEMU_VERSION} from qemu-system-${ARCH_M} --versio output '${QEMU_OUTPUT}'"
+		echo "Could not determine version of qemu, got this ${KVM_VERSION} from qemu-system-${ARCH_M} --versio output '${KVM_OUTPUT}'"
 		exit 1
 	fi
-	if [[ ! "${QEMU_VERSION}" =~ ^[0-9][0-9.]*[0-9]$ ]]
+	if [[ ! "${KVM_VERSION}" =~ ^[0-9][0-9.]*[0-9]$ ]]
 	then
-		echo "Non numeric version of qemu, got this ${QEMU_VERSION} from 'qemu-system-${ARCH_M} --version' output '${QEMU_OUTPUT}'"
+		echo "Non numeric version of qemu, got this ${KVM_VERSION} from 'qemu-system-${ARCH_M} --version' output '${KVM_OUTPUT}'"
 		exit 1
 	fi
 
-	echo "Using QEMU version ${QEMU_VERSION}"
+	echo "Using QEMU version ${KVM_VERSION}"
 
 	if [ "${OS}" == "GNU/Linux" ]
 	then
-		: ${QEMU_CPU:=${DEFAULT_QEMU_LINUX_CPU}}
-		: ${QEMU_MEMORY:=${DEFAULT_QEMU_LINUX_MEMORY}}
-		QEMU_MAJOR=$(echo "${QEMU_VERSION}" | cut -d "." -f 1)
-		if [ ${QEMU_MAJOR} -ge 9 ]
+		: ${KVM_CPU:=${DEFAULT_KVM_LINUX_CPU}}
+		: ${KVM_MEMORY:=${DEFAULT_KVM_LINUX_MEMORY}}
+		KVM_MAJOR=$(echo "${KVM_VERSION}" | cut -d "." -f 1)
+		if [ ${KVM_MAJOR} -ge 9 ]
 		then
-			: ${QEMU_BIOS:=${DEFAULT_QEMU_LINUX_v9_BIOS}}
+			: ${KVM_BIOS:=${DEFAULT_KVM_LINUX_v9_BIOS}}
 		else
-			: ${QEMU_BIOS:=${DEFAULT_QEMU_LINUX_v7_BIOS}}
+			: ${KVM_BIOS:=${DEFAULT_KVM_LINUX_v7_BIOS}}
 		fi
 				
 		case ${ARCH_M} in
 			x86_64|amd64)
-				: ${QEMU_MACHINE_TYPE:="pc"};;
+				: ${KVM_MACHINE_TYPE:="pc"};;
 			arm64|aarch64)
-				: ${QEMU_MACHINE_TYPE:="virt"};;
+				: ${KVM_MACHINE_TYPE:="virt"};;
 			*)
-				: ${QEMU_MACHINE_TYPE:="pc"};;
+				: ${KVM_MACHINE_TYPE:="pc"};;
 		esac
-		echo "Using linux QEMU machine ${QEMU_MACHINE_TYPE},${QEMU_CPU} CPUs, ${QEMU_MEMORY}G and bios ${QEMU_BIOS}"
+		echo "Using linux QEMU machine ${KVM_MACHINE_TYPE},${KVM_CPU} CPUs, ${KVM_MEMORY}G and bios ${KVM_BIOS}"
 		return
 	elif [ "${OS}" == "Darwin" ]
 	then
-		: ${QEMU_CPU:=${DEFAULT_QEMU_DARWIN_CPU}}
-		: ${QEMU_MEMORY:=${DEFAULT_QEMU_DARWIN_MEMORY}}
-		: ${QEMU_BIOS:=${DEFAULT_QEMU_DARWIN_BIOS}}
-		: ${QEMU_MACHINE_TYPE:="virt"}
-		echo "Using Darwin QEMU machine ${QEMU_MACHINE_TYPE} with ${QEMU_CPU} CPUs and ${QEMU_MEMORY}G"
+		: ${KVM_CPU:=${DEFAULT_KVM_DARWIN_CPU}}
+		: ${KVM_MEMORY:=${DEFAULT_KVM_DARWIN_MEMORY}}
+		: ${KVM_BIOS:=${DEFAULT_KVM_DARWIN_BIOS}}
+		: ${KVM_MACHINE_TYPE:="virt"}
+		echo "Using Darwin QEMU machine ${KVM_MACHINE_TYPE} with ${KVM_CPU} CPUs and ${KVM_MEMORY}G"
 		return
 	else
-		: ${QEMU_CPU:=${DEFAULT_QEMU_UNKNOWN_CPU}}
-		: ${QEMU_MEMORY:=${DEFAULT_QEMU_UNKNOWN_MEMORY}}
-		: ${QEMU_BIOS:=${DEFAULT_QEMU_UNKNOWN_BIOS}}
+		: ${KVM_CPU:=${DEFAULT_KVM_UNKNOWN_CPU}}
+		: ${KVM_MEMORY:=${DEFAULT_KVM_UNKNOWN_MEMORY}}
+		: ${KVM_BIOS:=${DEFAULT_KVM_UNKNOWN_BIOS}}
 		case ${ARCH_M} in
 			x86_64|amd64)
-				: ${QEMU_MACHINE_TYPE:="pc"};;
+				: ${KVM_MACHINE_TYPE:="pc"};;
 			arm64|aarch64)
-				: ${QEMU_MACHINE_TYPE:="virt"};;
+				: ${KVM_MACHINE_TYPE:="virt"};;
 			*)
-				: ${QEMU_MACHINE_TYPE:="pc"};;
+				: ${KVM_MACHINE_TYPE:="pc"};;
 		esac
-		echo "Using unknown OS QEMU machine ${QEMU_MACHINE_TYPE} with ${QEMU_CPU} CPUs and ${QEMU_MEMORY}G"
+		echo "Using unknown OS QEMU machine ${KVM_MACHINE_TYPE} with ${KVM_CPU} CPUs and ${KVM_MEMORY}G"
 		return
 	fi
 }
 
-function resize_qemu_image() {
-	QEMU_IMG_RES=$(qemu-img info "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" 2>&1)
+function resize_kvm_image() {
+	KVM_IMG_RES=$(qemu-img info "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" 2>&1)
 	if [ $? -ne 0 ]
 	then
-		echo "qemu-img return $? and '${QEMU_IMG_RES}'"
+		echo "qemu-img return $? and '${KVM_IMG_RES}'"
 		exit 1
 	fi
-	CURR_IMG_SIZE=$(echo "${QEMU_IMG_RES}" | grep '^virtual size' | sed -e "s/^.*(//" -e "s/ .*//")
+	CURR_IMG_SIZE=$(echo "${KVM_IMG_RES}" | grep '^virtual size' | sed -e "s/^.*(//" -e "s/ .*//")
 	CURR_IMG_SIZE=$((${CURR_IMG_SIZE}/1024/1024/1024))
-	if [ ${CURR_IMG_SIZE} -lt ${DEFAULT_QEMU_DISK_SIZE} ]
+	if [ ${CURR_IMG_SIZE} -lt ${DEFAULT_KVM_DISK_SIZE} ]
 	then
-		echo "Resizing image to ${DEFAULT_QEMU_DISK_SIZE}g"
-		#qemu-img resize "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ${DEFAULT_QEMU_DISK_SIZE}g
+		echo "Resizing image to ${DEFAULT_KVM_DISK_SIZE}g"
+		#qemu-img resize "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ${DEFAULT_KVM_DISK_SIZE}g
 		if [ $? -ne 0 ]
 		then
 			echo "qemu-img resize return $?"
 			exit 1
 		fi
 	else
-		echo "Image size (${CURR_IMG_SIZE}G) equal or larger than required(${DEFAULT_QEMU_DISK_SIZE}G)"
+		echo "Image size (${CURR_IMG_SIZE}G) equal or larger than required(${DEFAULT_KVM_DISK_SIZE}G)"
 	fi
 }
 
@@ -384,10 +384,10 @@ EOF
 
 function check_ports_redirection() {
 	REDIRECT_PORT=""
-	[ -z "${DEFAULT_QEMU_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_QEMU_HOST_SSHD_PORT}-:22"
-	[ -z "${DEFAULT_QEMU_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_QEMU_HOST_CONTAINERD_PORT}-:35000"
+	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_SSHD_PORT}-:22"
+	[ -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
 
-	REDIRECTS=${DEFAULT_QEMU_PORTS_REDIRECT//;/ } 
+	REDIRECTS=${DEFAULT_KVM_PORTS_REDIRECT//;/ } 
 	for REDIRECT in ${REDIRECTS}
 	do
 		REDIRECT_HOST=$(echo "${REDIRECT}" | cut -d ":" -f 1)
@@ -433,22 +433,22 @@ check_requirements
 
 check_ports_redirection
 
-check_qemu_kvm_hvf
+check_kvm_kvm_hvf
 
 check_image_exists
 
 check_k3s_log_pods_dir
 
-check_qemu_memory_cpu
+check_kvm_memory_cpu
 
-resize_qemu_image
+resize_kvm_image
 
 check_cloud_init_create
 
 BIOS_OPTION=""
-if [ ! -z "${QEMU_BIOS}" ]
+if [ ! -z "${KVM_BIOS}" ]
 then
-	BIOS_OPTION="-bios ${QEMU_BIOS}"
+	BIOS_OPTION="-bios ${KVM_BIOS}"
 fi
 
 VIRTFS_9P=""
@@ -459,12 +459,12 @@ then
 fi
 
 echo "qemu-system-${ARCH_M} \
-	-m ${QEMU_MEMORY}g \
-	-smp ${QEMU_CPU} \
-	-M ${QEMU_MACHINE_TYPE} \
+	-m ${KVM_MEMORY}g \
+	-smp ${KVM_CPU} \
+	-M ${KVM_MACHINE_TYPE} \
 	${HW_ACCEL} \
 	${BIOS_OPTION} \
-	-cpu ${QEMU_CPU_TYPE} \
+	-cpu ${KVM_CPU_TYPE} \
 	-drive if=none,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}",id=hd0 \
 	-drive file="${DEFAULT_DIR_IMAGE}/cloud-init.iso",index=1,media=cdrom \
 	-device virtio-blk-pci,drive=hd0 \
@@ -475,12 +475,12 @@ echo "qemu-system-${ARCH_M} \
  	-nographic"
 
 qemu-system-${ARCH_M} \
-	-m ${QEMU_MEMORY}g \
-	-smp ${QEMU_CPU} \
-	-M ${QEMU_MACHINE_TYPE} \
+	-m ${KVM_MEMORY}g \
+	-smp ${KVM_CPU} \
+	-M ${KVM_MACHINE_TYPE} \
 	${HW_ACCEL} \
 	${BIOS_OPTION} \
-	-cpu ${QEMU_CPU_TYPE} \
+	-cpu ${KVM_CPU_TYPE} \
 	-drive if=none,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}",id=hd0 \
 	-drive file="${DEFAULT_DIR_IMAGE}/cloud-init.iso",index=1,media=cdrom \
 	-device virtio-blk-pci,drive=hd0 \

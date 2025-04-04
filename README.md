@@ -1,18 +1,18 @@
 # Part of Smart-home security demo using AI - LLMs
 
 This module starts a VM running debian 12 with containerd and enables access to it with TCP connection.
-It runs the VM using QEMU and acceleration if possible. 
+It runs the VM using KVM or HVF acceleration  if possible. 
 The script runs under MacOS, Linux, docker and k3s. 
 
 # Requirements
 
 ## Linux 
-    - QEMU
+    - KVM
     - wget
 
 ## MacOS
     - Homebrew (strongly suggested)
-    - QEMU
+    - KVM
     - wget
     
 ## Docker
@@ -55,7 +55,7 @@ A csi-proxy or crismux running on the host can be used to convert that port to a
 
 The image will be resized automatically according to the sizes provided. The image will not be reduced in size.
 
-The QEMU will use acceleration if available.
+The VM will use acceleration if available.
 
 THe following variables configures the script:
 
@@ -73,25 +73,25 @@ THe following variables configures the script:
 | `DEFAULT_IMAGE` | `debian-12-genericcloud-${ARCH}-20250316-2053.qcow2` | QCOW image to use as base |
 | `DEFAULT_SOURCE_IMAGE` | `https://cloud.debian.org/images/cloud/bookworm/20250316-2053/` | where to download QCOW image |
 | `DEFAULT_DIR_IMAGE` | `$(pwd)/image` | Directory to use to store image and artifacts |
-| `DEFAULT_QEMU_DARWIN_CPU` | 2 | # CPUS allocated to the VM when running in MacOS |
-| `DEFAULT_QEMU_DARWIN_MEMORY` | 2 | DRAM allocated to the VM to the VM when running in MacOS |
-| `DEFAULT_QEMU_LINUX_CPU` | 2 | # CPUS allocated to the VM when running in Linux/container |
-| `DEFAULT_QEMU_LINUX_MEMORY` | 2 | DRAM allocated to the VM to the VM when running in Linux/container | 
-| `DEFAULT_QEMU_UNKNOWN_CPU` | 2 | # CPUS allocated to the VM when running in unknown OS |
-| `DEFAULT_QEMU_UNKNOWN_MEMORY` | 2 | DRAM allocated to the VM to the VM when running in unknown OS | 
-| `DEFAULT_QEMU_DISK_SIZE` | 3 | Maximum size of QCOW disk |
-| `DEFAULT_QEMU_DARWIN_BIOS` | `/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH}-code.fd` | bios to boot (UEFI) when running under MacOS | 
-| `DEFAULT_QEMU_LINUX_v9_BIOS` | | bios to boot (UEFI) when running under Linux/container with QEMU v9x |
-| `DEFAULT_QEMU_LINUX_v7_BIOS` | `/usr/share/qemu-efi-aarch64/QEMU_EFI.fd` | bios to boot (UEFI) when running under Linux/container with QEMU v7x |
-| `DEFAULT_QEMU_UNKNWON_BIOS` | | bios to boot (UEFI) when running under unknown OS |
-| `DEFAULT_QEMU_HOST_SSHD_PORT` | 5555 | TCP port to be used on the host to access port 22 on VM |
-| `DEFAULT_QEMU_HOST_CONTAINERD_PORT` | 35000 | TCP port to be used on the host to access port 35000 (cs-grpc-proxy) on VM |
+| `DEFAULT_KVM_DARWIN_CPU` | 2 | # CPUS allocated to the VM when running in MacOS |
+| `DEFAULT_KVM_DARWIN_MEMORY` | 2 | DRAM allocated to the VM to the VM when running in MacOS |
+| `DEFAULT_KVM_LINUX_CPU` | 2 | # CPUS allocated to the VM when running in Linux/container |
+| `DEFAULT_KVM_LINUX_MEMORY` | 2 | DRAM allocated to the VM to the VM when running in Linux/container | 
+| `DEFAULT_KVM_UNKNOWN_CPU` | 2 | # CPUS allocated to the VM when running in unknown OS |
+| `DEFAULT_KVM_UNKNOWN_MEMORY` | 2 | DRAM allocated to the VM to the VM when running in unknown OS | 
+| `DEFAULT_KVM_DISK_SIZE` | 3 | Maximum size of QCOW disk |
+| `DEFAULT_KVM_DARWIN_BIOS` | `/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH}-code.fd` | bios to boot (UEFI) when running under MacOS | 
+| `DEFAULT_KVM_LINUX_v9_BIOS` | | bios to boot (UEFI) when running under Linux/container with KVM v9x |
+| `DEFAULT_KVM_LINUX_v7_BIOS` | `/usr/share/qemu-efi-aarch64/QEMU_EFI.fd` | bios to boot (UEFI) when running under Linux/container with KVM v7x |
+| `DEFAULT_KVM_UNKNWON_BIOS` | | bios to boot (UEFI) when running under unknown OS |
+| `DEFAULT_KVM_HOST_SSHD_PORT` | 5555 | TCP port to be used on the host to access port 22 on VM |
+| `DEFAULT_KVM_HOST_CONTAINERD_PORT` | 35000 | TCP port to be used on the host to access port 35000 (cs-grpc-proxy) on VM |
 | `DEFAULT_CSI_GRPC_PROXY_URL` | `https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux- `| get csi-grpc-proxy binary |
-| `QEMU_CPU_TYPE` | Use "host" if accelerated, otherise use "cortex-a76" or "qemu64-v1" | CPU type of QEMU |
-| `QEMU_CPU` | `DEFAULT_QEMU_<OS>_CPU` | # cpus to allocate |
-| `QEMU_MEMORY` | `DEFAULT_QEMU_<OS>_MEMORY` | DRAM to allocate |
-| `QEMU_BIOS` | `DEFAULT_QEMU_<OS>_BIOS` | BIOS to use |
-| `QEMU_MACHINE_TYPE` | use "virt" or ""pc" | QEMU machine type |
+| `KVM_CPU_TYPE` | Use "host" if accelerated, otherise use "cortex-a76" or "qemu64-v1" | CPU type |
+| `KVM_CPU` | `DEFAULT_KVM_<OS>_CPU` | # cpus to allocate |
+| `KVM_MEMORY` | `DEFAULT_KVM_<OS>_MEMORY` | DRAM to allocate |
+| `KVM_BIOS` | `DEFAULT_KVM_<OS>_BIOS` | BIOS to use |
+| `KVM_MACHINE_TYPE` | use "virt" or ""pc" | KVM machine type |
 
 ## Docker
 
