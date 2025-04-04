@@ -40,6 +40,7 @@ esac
 : ${DEFAULT_QEMU_HOST_SSHD_PORT:="5555"}
 : ${DEFAULT_QEMU_HOST_CONTAINERD_PORT:="35000"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
+: ${DEFAULT_QEMU_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by coma
 
 IMAGE_DOWNLOADED=0
 
@@ -383,15 +384,17 @@ EOF
 
 function check_ports_redirection() {
 	REDIRECT_PORT=""
-	if [ ! -z "${DEFAULT_QEMU_HOST_SSHD_PORT}" ]
-	then
-		REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_QEMU_HOST_SSHD_PORT}-:22"
-	fi
-	REDIRECT_PORT=""
-	if [ ! -z "${DEFAULT_QEMU_HOST_CONTAINERD_PORT}" ]
-	then
-		REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_QEMU_HOST_CONTAINERD_PORT}-:35000"
-	fi
+	[ -z "${DEFAULT_QEMU_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_QEMU_HOST_SSHD_PORT}-:22"
+	[ -z "${DEFAULT_QEMU_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_QEMU_HOST_CONTAINERD_PORT}-:35000"
+
+	REDIRECTS=${DEFAULT_QEMU_PORTS_REDIRECT//;/ } 
+	for REDIRECT in ${REDIRECTS}
+	do
+		REDIRECT_HOST=$(echo "${REDIRECT}" | cut -d ":" -f 1)
+		REDIRECT_VM=$(echo "${REDIRECT}" | cut -d ":" -f 2)
+		[[ "${REDIRECT_HOST}" =~ ^[0-9][0-9]*$ && "${REDIRECT_VM}" =~ ^[0-9][0-9]*$ ]] || continue
+		REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${REDIRECT_HOST}-:${REDIRECT_VM}"
+	done
 }
 
 function check_k3s_log_pods_dir() {
