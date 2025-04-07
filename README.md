@@ -39,12 +39,10 @@ cd hydra
 
 ### TL;DR
 ```
-docker run -d -v /var/lib/kubelet:/var/lib/kubelet -v /var/log/pods:/var/log/pods --device /dev/kvm isolatedvm
+docker run -d --rm --network host --env "VM_SSH_AUTHORIZED_KEY=\"$(cat <file with SSH public key>)\"" -v <local image directory>:/root/image -v /var/lib/kubelet:/var/lib/kubelet -v /var/log/pods:/var/log/pods --device /dev/kvm:/dev/kvm isolated-vm
 ```
-or use this one if want to preserve the image 
-```
-docker run -d -v /var/lib/kubelet:/var/lib/kubelet -v /var/log/pods:/var/log/pods -v images:/root/images --device /dev/kvm isolatedvm
-```
+
+Update `<file with SSH public key>` and `<local image directory>` with the correct files. `<local image directory>` has to have a full path.
 
 ### Details
 
@@ -61,6 +59,8 @@ THe following variables configures the script:
 
 | Variable | Default value | Usage |
 | -------- | ------------- | ----- |
+| `DRY_RUN_ONLY` | 0 | If > 0 will print the command line for the VM and exit |
+| `DEBUG` | 0 | If > 0 will print debug for the script |
 | `DISABLE_9P_MOUNTS` | 0 | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods |
 | `COPY_IMAGE_BACKUP` | 0 | if > 0 preserve a copy of the image and start form a copy of that image if it exists |
 | `DEFAULT_KERNEL_VERSION` | `6.12.12+bpo | kernel version to install |
