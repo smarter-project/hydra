@@ -13,6 +13,9 @@ case ${ARCH_M} in
 	*)
 		ARCH=${ARCH_M};;
 esac
+: ${DEBUG:=0}
+[ ${DEBUG} -gt 0 ] && set -x
+: ${DRY_RUN_ONLY:=0}
 : ${DISABLE_9P_MOUNTS:=0}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
@@ -115,7 +118,7 @@ function check_image_directory() {
 	if [  ! -d "${DEFAULT_DIR_IMAGE}" ]
 	then
 		echo "Image directory '${DEFAULT_DIR_IMAGE}' does not exist, trying to create"
-		mkdir -p "${DEFAULT_DIR_IMAGE}"
+		mkdir -p "${DEFAULT_DIR_IMAGE}" || exit $?
 		if [ $? -ne 0 ]
 		then
 			echo "Image directory '${DEFAULT_DIR_IMAGE}' could not be created, bailing out"
@@ -249,7 +252,7 @@ function check_cloud_init_create() {
 			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
 		fi
 	fi
-	mkdir "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+	mkdir "${DEFAULT_DIR_IMAGE}/cloud-init.dir" || exit $?
 	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/meta-data" <<EOF
 EOF
 	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
@@ -393,10 +396,10 @@ EOF
 		CONFIG_MODIFIED=$(diff "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" "${DEFAULT_DIR_IMAGE}/cloud-init.dir")
 		if [ -z "${CONFIG_MODIFIED}" ]
 		then
-			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old"
+			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" || exit $?
 			return
 		fi
-		rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old"
+		rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" || exit $?
 	fi
 		
 	IMAGE_RESTART=1
@@ -435,7 +438,7 @@ function check_k3s_log_pods_dir() {
 			: ${DIR_K3S_VAR:=${DEFAULT_DIR_K3S_VAR_DARWIN}}
 			;;
 		GNU/Linux)
-			if [ "x${USER}" == "xroot" ]
+			if [ "x${USER}" == "xroot" -o "$(id -u)" -eq 0 ]
 			then
 				: ${DIR_K3S_VAR:=${DEFAULT_DIR_K3S_VAR_LINUX_ROOT}}
 			else
@@ -488,21 +491,23 @@ then
 		   -virtfs local,path=${DIR_K3S_VAR}/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1 " 
 fi
 
-echo "qemu-system-${ARCH_M} \
-	-m ${KVM_MEMORY}g \
-	-smp ${KVM_CPU} \
-	-M ${KVM_MACHINE_TYPE} \
-	${HW_ACCEL} \
-	${BIOS_OPTION} \
-	-cpu ${KVM_CPU_TYPE} \
-	-drive if=none,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}",id=hd0 \
-	-drive file="${DEFAULT_DIR_IMAGE}/cloud-init.iso",index=1,media=cdrom \
+echo 'qemu-system-'${ARCH_M}' \
+	-m '${KVM_MEMORY}'g \
+	-smp '${KVM_CPU}' \
+	-M '${KVM_MACHINE_TYPE}' \
+	'${HW_ACCEL}' \
+	'${BIOS_OPTION}' \
+	-cpu '${KVM_CPU_TYPE}' \
+	-drive if=none,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}'",id=hd0 \
+	-drive file="'${DEFAULT_DIR_IMAGE}'/cloud-init.iso",index=1,media=cdrom \
 	-device virtio-blk-pci,drive=hd0 \
 	-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
-	-netdev user,id=net0${REDIRECT_PORT} \
+	-netdev user,id=net0'${REDIRECT_PORT}' \
 	-serial mon:stdio \
-	${VIRTFS_9P} \
- 	-nographic"
+	'${VIRTFS_9P}' \
+ 	-nographic'
+
+[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
 
 qemu-system-${ARCH_M} \
 	-m ${KVM_MEMORY}g \
