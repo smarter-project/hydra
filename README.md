@@ -25,30 +25,29 @@ The script runs under MacOS, Linux, docker and k3s.
 
 # Usage
 
-## Linux and MacOS
-
-### TL;DR
-clone the repository and run the script
-```
-git clone https://github.com/smarter-project/hydra
-cd hydra
-./start-vm.sh
-```
-
 ## Docker
 
 ### TL;DR
 ```
-docker run -d --rm --network host --env "VM_SSH_AUTHORIZED_KEY=\"$(cat <file with SSH public key>)\"" -v <local image directory>:/root/image -v /var/lib/kubelet:/var/lib/kubelet -v /var/log/pods:/var/log/pods --device /dev/kvm:/dev/kvm isolated-vm
+docker run \
+    -d \
+    --rm \
+    --network host \
+    --env "VM_SSH_AUTHORIZED_KEY=\"$(cat <file with SSH public key>)\"" \
+    -v <local image directory>:/root/image \
+    -v /var/lib/kubelet:/var/lib/kubelet \
+    -v /var/log/pods:/var/log/pods \
+    --device /dev/kvm:/dev/kvm \
+    isolated-vm
 ```
 
 Update `<file with SSH public key>` and `<local image directory>` with the correct files. `<local image directory>` has to have a full path.
 
 ### Details
 
-The directory "image" located on the directory that start-vm.sh was run will be used to store the image for the VM. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
-Removing the directory or the qcow2 file inside the image directory will download and configured.
-Containerd CRI will be available at localhost port 35000.
+The directory "image" located on the directory `<local image directory>`. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
+A few variables of list below (user configuration, shared directories for example) will re-download the image. 
+SSH will be availabe at port 5555 and Containerd CRI will be available at port 35000. 
 A csi-proxy or crismux running on the host can be used to convert that port to a socket if required.
 
 The image will be resized automatically according to the sizes provided. The image will not be reduced in size.
@@ -99,27 +98,15 @@ THe following variables configures the script:
 | `VM_HOSTNAME` | vm-host | Hostname |
 | `VM_SSH_AUTHORIZED_KEY` | | ssh public key to add to authorized_key for the user VM_USERNAME |
 
-## Docker
+## Linux and MacOS
 
 ### TL;DR
+clone the repository and run the script
 ```
-docker run grhc.io/smarter-project/hydra 
-```
-
-with accelleration
-
-```
-docker run --device /dev/kvm:/dev/kvm grhc.io/smarter-project/hydra 
+git clone https://github.com/smarter-project/hydra
+cd hydra
+./start-vm.sh
 ```
 
-### Details
+It will start a VM using local directory image. If run as root (linux) it will also try to share the directories `/var/lib/kubelet` and `/var/log/pods`.
 
-If the image directory is not a shared directory with the host, the VM state will not be preserved in multiple runs
-use:
-```
-docker run -v image:/root/image --device /dev/kvm:/dev/kvm grhc.io/smarter-project/hydra
-```
-to preserve VM image.
-
-
-Containerd will be available at the IP of the containerd port 35000
