@@ -19,6 +19,7 @@ esac
 : ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
 : ${VM_USERNAME:="vm-user"}
 : ${VM_PASSWORD:="vm-user"}
+: ${VM_SALT:="123456"}
 : ${VM_PASSWORD_ENCRYPTED:=""}
 : ${VM_HOSTNAME:="vm-host"}
 : ${VM_SSH_AUTHORIZED_KEY:=""}
@@ -47,19 +48,18 @@ esac
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by coma
 
-IMAGE_DOWNLOADED=0
+IMAGE_RESTART=0
 
 function check_requirements() {
-	KVM_EXECUTABLE=$(type qemu-system-${ARCH_M} 2>/dev/null)
-	if [ -z "${KVM_EXECUTABLE}" ]
+	ERROR_STR=""
+	for REQUIRED in $*
+	do
+		EXEC_LOCATION=$(type ${REQUIRED} 2>/dev/null)
+		[ $? -gt 0 -o -z "{EXEC_LOCATION}" ] && ERROR_STR="${ERROR_STR}${REQUIRED} not available, please install it\n"
+	done
+	if [ ! -z "${ERROR_STR}" ]
 	then
-		echo "${KVM_EXECUTABLE} not available , please install it"
-		exit 1
-	fi
-	MKISOFS_EXECUTABLE=$(type mkisofs 2>/dev/null)
-	if [ -z "${MKISOFS_EXECUTABLE}" ]
-	then
-		echo "mkisofs not available , please install mkisofs"
+		echo -en "${ERROR_STR}"
 		exit 1
 	fi
 }
@@ -111,8 +111,7 @@ function check_kvm_kvm_hvf() {
 	fi
 }
 
-function check_image_exists() {
-	[ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
+function check_image_directory() {
 	if [  ! -d "${DEFAULT_DIR_IMAGE}" ]
 	then
 		echo "Image directory '${DEFAULT_DIR_IMAGE}' does not exist, trying to create"
@@ -122,13 +121,19 @@ function check_image_exists() {
 			echo "Image directory '${DEFAULT_DIR_IMAGE}' could not be created, bailing out"
 			exit 1
 		fi
-	else
-		echo "Image directory '${DEFAULT_DIR_IMAGE}' exists"
 	fi
+}
 
-	if [ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ]
+function check_image_exists() {
+	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ]
 	then
 		echo "Image ${DEFAULT_IMAGE} exists on disk, reusing"
+		return
+	fi
+	if [ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ] 
+	then
+		echo "Using backup image from ${DEFAULT_SOURCE_IMAGE}"
+		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
 	else
 		echo "Download image from ${DEFAULT_SOURCE_IMAGE}"
 		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_SOURCE_IMAGE}/${DEFAULT_IMAGE}" 
@@ -137,7 +142,6 @@ function check_image_exists() {
 			echo "Download unsucceful, bailing out"
 			exit 1
 		fi
-		IMAGE_DOWNLOADED=1
 		[ ${COPY_IMAGE_BACKUP} -gt 0 ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp
 	fi
 }
@@ -236,33 +240,31 @@ function resize_kvm_image() {
 }
 
 function check_cloud_init_create() {
-	if (( ${IMAGE_DOWNLOADED} ))
+	if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir" ]
 	then
-		rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.iso" "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-	fi	
-	if [ ! -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso" ]
-	then
-		echo "cloud-init.iso does not exist, creating"
-		if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir" ]
+		if [ -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso" ]
 		then
+			mv "${DEFAULT_DIR_IMAGE}/cloud-init.dir" "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old"
+		else
 			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
 		fi
-		mkdir "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/meta-data" <<EOF
+	fi
+	mkdir "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/meta-data" <<EOF
 EOF
-		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 #cloud-config
 EOF
-		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
-                then
-                        cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+	then
+		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 mounts:
 - [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 - [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
-                fi
-		: ${VM_PASSWORD_ENCRYPTED:=$(echo ${VM_PASSWORD} | openssl passwd -6 -stdin)}
-                cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	fi
+	: ${VM_PASSWORD_ENCRYPTED:=$(echo ${VM_PASSWORD} | openssl passwd -6 -salt ${VM_SALT} -stdin)}
+	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 users:
 - default
 - name: ${VM_USERNAME}
@@ -272,14 +274,14 @@ users:
   lock_passwd: false
   passwd: ${VM_PASSWORD_ENCRYPTED}
 EOF
-		if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
-		then 
-			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
+	then 
+		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
   ssh_authorized_keys:
       - ${VM_SSH_AUTHORIZED_KEY}
 EOF
-		fi
-                cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	fi
+	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 hostname: ${VM_HOSTNAME}
 create_hostname_file: true
 package_reboot_if_required: true
@@ -337,27 +339,27 @@ runcmd:
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
 EOF
-		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
-                then
-                        cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+	then
+		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ mkdir,"-p","/var/lib/kubelet","/var/log/pods" ]
 - [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
 - [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
 - [ mount, "host0"]
 - [ mount, "host1"]
 EOF
-                fi
-		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	fi
+	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ systemctl, daemon-reload ]
 - [ systemctl, restart, containerd ]
 - [ systemctl, enable, csi-grpc-proxy.service ]
 - [ systemctl, start, csi-grpc-proxy.service ]
 EOF
-		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/vendor-data" <<EOF
+	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/vendor-data" <<EOF
 EOF
-		cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/network-config" <<EOF
-instance-id: testhost
-local-hostname: testhost
+	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/network-config" <<EOF
+instance-id: ${VM_HOSTNAME}
+local-hostname: ${VM_HOSTNAME}
 network:
   version: 2
   ethernets:
@@ -386,15 +388,26 @@ network:
       - to: 0.0.0.0/0
         via: 10.0.2.2
 EOF
-		case ${OS} in
-			Darwin)
-				hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-				;;
-			*)
-				mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -volid cidata -joliet -rock "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-				;;
-		esac
+	if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" ]
+	then 
+		CONFIG_MODIFIED=$(diff "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" "${DEFAULT_DIR_IMAGE}/cloud-init.dir")
+		if [ -z "${CONFIG_MODIFIED}" ]
+		then
+			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old"
+			return
+		fi
+		rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old"
 	fi
+		
+	IMAGE_RESTART=1
+	case ${OS} in
+		Darwin)
+			hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+			;;
+		*)
+			mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -input-charset utf-8 -volid cidata -joliet -rock "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+			;;
+	esac
 }
 
 function check_ports_redirection() {
@@ -442,13 +455,17 @@ function check_k3s_log_pods_dir() {
 	fi
 }
 
-# ----- Main
+# ----- Main -------------------------------------------------------------------------------------
 
-check_requirements
+check_requirements qemu-system-${ARCH_M} mkisofs wget
 
 check_ports_redirection
 
 check_kvm_kvm_hvf
+
+check_image_directory
+
+check_cloud_init_create
 
 check_image_exists
 
@@ -457,8 +474,6 @@ check_k3s_log_pods_dir
 check_kvm_memory_cpu
 
 resize_kvm_image
-
-check_cloud_init_create
 
 BIOS_OPTION=""
 if [ ! -z "${KVM_BIOS}" ]

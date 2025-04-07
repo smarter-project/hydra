@@ -92,7 +92,8 @@ THe following variables configures the script:
 | `KVM_MEMORY` | `DEFAULT_KVM_<OS>_MEMORY` | DRAM to allocate |
 | `KVM_BIOS` | `DEFAULT_KVM_<OS>_BIOS` | BIOS to use |
 | `KVM_MACHINE_TYPE` | use "virt" or ""pc" | KVM machine type |
-| `VM_USERNAME` | vm-user | Usename to created at VM 
+| `VM_USERNAME` | vm-user | Usename to created at VM |
+| `VM_SALT` | 123456 | Salt to be used when creating the encrypted password |
 | `VM_PASSWORD` | vm-user | Cleartext password to be used |
 | `VM_PASSWORD_ENCRYPTED` | | Encrypted password to be used, overwrites the cleartext password | 
 | `VM_HOSTNAME` | vm-host | Hostname |
