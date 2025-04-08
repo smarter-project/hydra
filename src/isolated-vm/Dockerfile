@@ -1,7 +1,7 @@
 FROM debian:12
 
 # Install required tools
-RUN MACHINE_TYPE=$(uname -m | sed -e "s/arm64\|aarch64/arm/" -e "s/x86_64\|amd64/x86/");apt update -y;apt install -y qemu-system-${MACHINE_TYPE} mkisofs wget;apt clean
+RUN MACHINE_TYPE=$(uname -m | sed -e "s/arm64\|aarch64/arm/" -e "s/x86_64\|amd64/x86/");apt update -y;apt install -y qemu-system-${MACHINE_TYPE} mkisofs wget;apt remove -y libllvm15 libgtk-3-0;apt clean -y 
 
 WORKDIR /root
 

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+: ${DEBUG:=0}
+[ ${DEBUG} -gt 0 ] && set -x
 : ${SYSTEMD_DIR:="/etc/systemd/system"}
 : ${K3S_SERVICE_FILE:="${SYSTEMD_DIR}/k3s.service"}
 : ${K3S_DATA_DIR:="/var/lib/rancher/k3s"}

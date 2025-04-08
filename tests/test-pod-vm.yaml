@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-vm
+spec:
+  nodeName: raspberrypi5
+  hostname: text-vm
+  dnsPolicy: ClusterFirstWithHostNet
+  hostNetwork: True
+  containers:
+    - name: vm
+      image: isolated-vm
+      env:
+        - name: VM_SSH_AUTHORIZED_KEY
+          value: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA4P/xhHBcGo7pEPLOAjJfZIoPcCbgR/Apw9Q1MdMZVP alexandr@raspberrypi5 
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+        - name: image
+          mountPath: /root/image
+        - name: kubelet
+          mountPath: /var/lib/kubelet
+        - name: pods
+          mountPath: /var/log/pods
+  volumes:
+    - name: image
+      hostPath:
+        path: /srv/shared-container-volumes/image
+    - name: kubelet
+      hostPath:
+        path: /var/lib/kubelet
+        type: Directory
+    - name: pods
+      hostPath:
+        path: /var/log/pods
+        type: Directory
+  terminationGracePeriodSeconds: 30
+
