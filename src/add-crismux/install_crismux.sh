@@ -429,13 +429,8 @@ while getopts ":" o; do
 done
 shift $((OPTIND-1))
 
-if [ $# -ne 1 ]
-then
-        echo "command to execute required" 1>&2
-	usage
-        exit 1
-fi
-COMMAND=$1
+COMMAND=verify
+[ $# -gt 0 ] && COMMAND=$1
 
 case $COMMAND in
 	clean)
@@ -448,5 +443,5 @@ case $COMMAND in
 		usage;;
 esac
 
-
+exit 0
 

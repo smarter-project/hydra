@@ -9,9 +9,10 @@ USER root
 
 # Copy the setup script
 COPY install_crismux.sh .
+COPY crismux .
 
 # Make the script executable
 RUN chmod +x install_crismux.sh
 
 # Set the entrypoint
-ENTRYPOINT ["./install_crismux.sh","verify"] 
+ENTRYPOINT ["./install_crismux.sh"] 

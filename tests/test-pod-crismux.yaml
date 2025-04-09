@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-crismux
+spec:
+  nodeName: raspberrypi5
+  hostname: test-crismux
+  dnsPolicy: ClusterFirstWithHostNet
+  hostNetwork: True
+  restartPolicy: Never
+  containers:
+    - name: crismux
+      image: add-crismux
+      args: ["install"] 
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+        - name: systemctl
+          mountPath: /bin/systemctl
+        - name: lib
+          mountPath: /lib
+        - name: cgroup
+          mountPath: /sys/fs/cgroup
+        - name: rancher
+          mountPath: /var/lib/rancher
+        - name: etcsystemd
+          mountPath: /etc/systemd
+        - name: runsystemd
+          mountPath: /run/systemd/system
+        - name: systemdsocket
+          mountPath: /var/run/dbus/system_bus_socket
+  volumes:
+    - name: systemctl
+      hostPath:
+        path: /bin/systemctl
+    - name: lib
+      hostPath:
+        path: /lib
+    - name: cgroup
+      hostPath:
+        path: /sys/fs/cgroup
+    - name: rancher
+      hostPath:
+        path: /var/lib/rancher
+    - name: etcsystemd
+      hostPath:
+        path: /etc/systemd
+    - name: runsystemd
+      hostPath:
+        path: /run/systemd/system
+    - name: systemdsocket
+      hostPath:
+        path: /var/run/dbus/system_bus_socket
+  terminationGracePeriodSeconds: 30
