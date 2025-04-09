@@ -206,7 +206,7 @@ function add_crismux() {
 			cp "${CRISMUX_ARTIFACT_LOCAL}" "${CRISMUX_EXECUTABLE_FILE}"
 			chmod a+x "${CRISMUX_EXECUTABLE_FILE}"
 		else
-			echo "DO not have access to crismux plese set either CRISMUX_ARTIFACT_LOCAL or CRISMUX_ARTIFACT_URL"
+			echo "Do not have access to crismux plese set either CRISMUX_ARTIFACT_LOCAL or CRISMUX_ARTIFACT_URL"
 			exit 1
 		fi
 		cat << EOF > "${CRISMUX_CONFIG_FILE}"
@@ -304,8 +304,25 @@ function check_crismux() {
 }
 
 function start_services() {
-	systemctl stop k3s
 	systemctl daemon-reload
+	systemctl stop -f k3s
+	i=0
+	while [ $i -lt 12 ]
+	do
+		STATUS=$(systemctl show $1)
+		if [ $? -gt 0 ]
+		then
+			echo "Something wrong with systemctl ${STATUS}"
+			exit 1
+		fi
+		STATUS_SERVICES=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2)
+		if [ "x${STATUS_SERVICES}" != "xrunning" ]
+		then
+			break
+		fi
+		sleep 5
+		i=$(($i+1))
+	done
 	systemctl enable containerd-k3s crismux
 	systemctl start k3s containerd-k3s crismux
 }
@@ -317,15 +334,17 @@ function stop_service() {
 		echo "Something wrong with systemctl ${STATUS}"
 		exit 1
 	fi
-	STATUS_SERVICES=$(echo "${STATUS}" | grep UnitFileState | cut -d "=" -f 2)
-	if [ "x${STATUS_SERVICES}" == "xenabled" ]
+	LOAD_STATUS_SERVICE=$(echo "${STATUS}" | grep LoadState | cut -d "=" -f 2)
+	UNIT_STATUS_SERVICE=$(echo "${STATUS}" | grep UnitFileState | cut -d "=" -f 2)
+	ACTIVE_STATUS_SERVICE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2)
+	SUB_STATUS_SERVICE=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2)
+	if [ "x${UNIT_STATUS_SERVICE}" == "xenabled" ]
 	then
 		systemctl disable $1
 	fi
-	STATUS_STATE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2)
-	if [ "x${STATUS_STATE}" == "xactive" ]
+	if [ "x${LOAD_STATUS_SERVICE}" == "xloaded" -o "x${ACTIVE_STATUS_SERVICE}" == "xactive" -o "x${SUB_STATUS_SERVICE}" == "xrunning" ]
 	then
-		systemctl stop $1
+		systemctl stop -f $1
 	fi
 }
 
@@ -368,7 +387,7 @@ function execute_verify() {
 }
 
 function execute_clean() {
-	stop_service contained-k3s
+	stop_service containerd-k3s
 	stop_service crismux
 	revert_existing_k3s
 	remove_crismux
