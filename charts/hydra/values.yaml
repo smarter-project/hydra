@@ -1,0 +1,7 @@
+# Default values for smarter-edge.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+configuration:
+  # add an sshkey to be able to access the vm using ssh
+  sshkey: 

@@ -6,7 +6,7 @@ This chart deploys crismux
 
 ```console
 helm repo add isolated-vm https://smarter-project.github.io/cdd-crismux/
-helm install --create-namespace --namespace <namespace to use> isolated-vm isolated-vm/isolated-vm
+helm install --create-namespace --namespace <namespace to use> isolated-vm hydra/isolated-vm
 ```
 
 # Overview

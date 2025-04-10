@@ -1,12 +1,12 @@
-# home-orchestrator
+# hydra
 
-This chart deploys crismux
+This chart deploys charts crismux and isolated-vm
 
 ## TL;DR
 
 ```console
-helm repo add add-crismux https://smarter-project.github.io/hydra/
-helm install --create-namespace --namespace <namespace to use> add-crismux hydra/add-crismux
+helm repo add hydra https://smarter-project.github.io/hydra/
+helm install --create-namespace --namespace <namespace to use> hydra hydra/hydra
 ```
 
 # Overview
@@ -23,7 +23,7 @@ This chart assumes a full deployment of k3s with traefik, etc.
 # Uninstalling the Chart
 
 ```
-helm delete add-crismux --namespace <namespace to use>
+helm delete hydra --namespace <namespace to use>
 ```
 
 # Parameters
@@ -32,3 +32,4 @@ helm delete add-crismux --namespace <namespace to use>
 
 | Name | Description | Value |
 | ---- | ----------- | ----- |
+| configuration.sshkey | Public ssh key to enable access to the VM (user vm-user) | |

@@ -1,6 +1,6 @@
 apiVersion: v2
-name: add-crismux
-description: Add crismux to k3s nodes
+name: hydra
+description: Install isolated-vm and crismux
 home: https://getsmarter.io
 # A chart can be either an 'application' or a 'library' chart.
 #
@@ -26,6 +26,13 @@ appVersion: "0.9.0"
 icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
 kubeVersion: ">=1.18.0-0"
 
+dependencies:
+  - name: isolated-vm
+    version: 0.9.0
+    repository: https://smarter-project.github.io/hydra
+  - name: crismux
+    version: 0.9.0
+    repository: https://smarter-project.github.io/crismux
 sources:
   - https://github.com/smarter-project/documentation
 annotations:
