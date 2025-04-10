@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application.appName }}
+  labels:
+    name: {{ .Values.application.appName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.application.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.application.appName }}
+    spec: 
+      hostname: {{ .Values.application.appName }}
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: True
+      restartPolicy: Never
+      containers:
+        - name: {{ .Values.application.appName }}
+          image: {{ .Values.application.image }}:{{ .Values.application.imageVersion }}
+          args: ["install"] 
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: systemctl
+              mountPath: /bin/systemctl
+            - name: lib
+              mountPath: /lib
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+            - name: rancher
+              mountPath: /var/lib/rancher
+            - name: etcsystemd
+              mountPath: /etc/systemd
+            - name: runsystemd
+              mountPath: /run/systemd/system
+            - name: systemdsocket
+              mountPath: /var/run/dbus/system_bus_socket
+      volumes:
+        - name: systemctl
+          hostPath:
+            path: /bin/systemctl
+        - name: lib
+          hostPath:
+            path: /lib
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        - name: rancher
+          hostPath:
+            path: /var/lib/rancher
+        - name: etcsystemd
+          hostPath:
+            path: /etc/systemd
+        - name: runsystemd
+          hostPath:
+            path: /run/systemd/system
+        - name: systemdsocket
+          hostPath:
+            path: /var/run/dbus/system_bus_socket
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nelly
+handler: nelly
+

@@ -1,0 +1,10 @@
+# Default values for smarter-edge.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+application:
+  appName: add-crismux
+  image: ghcr.io/smarter-project/hydra-add-crismux
+  imageVersion: main
+
+configuration:

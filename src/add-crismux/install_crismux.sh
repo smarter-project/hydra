@@ -33,7 +33,6 @@ function modify_existing_k3s() {
 	if [ ! -z "${CONTAINER_RUNTIME}" ]
 	then
 		echo "k3s service already modified"
-		K3S_MODIFIED=0
 	else
 		if [ -f "${K3S_SERVICE_FILE}".old ]
 		then
@@ -46,6 +45,7 @@ function modify_existing_k3s() {
 		    -e "s#^\(After=network-online.target\)#\1\nAfter=crismux#" \
 			"${K3S_SERVICE_FILE}".old > "${K3S_SERVICE_FILE}"
 		K3S_MODIFIED=1
+		SYSTEMD_CHANGED=1
 	fi
 }
 
@@ -64,7 +64,6 @@ function revert_existing_k3s() {
 	then
 		echo "k3s service not modified so not changing anything"
 		rm "${K3S_SERVICE_FILE}".old 2>/dev/null
-		K3S_MODIFIED=0
 	else
 		if [ ! -f "${K3S_SERVICE_FILE}".old ]
 		then
@@ -73,6 +72,7 @@ function revert_existing_k3s() {
 		fi
 
 		mv "${K3S_SERVICE_FILE}".old "${K3S_SERVICE_FILE}"
+		SYSTEMD_CHANGED=1
 		K3S_MODIFIED=1
 	fi
 }
@@ -104,9 +104,10 @@ function add_containerd() {
 	if [ -f "${CONTAINERD_SERVICE_FILE}" ]
 	then
 		echo "containerd service already installed"
-	else
-		sed -e "s[${K3S_SOCKET_DIR}/containerd.sock[${CONTAINERD_SOCKET_FILE}[" "${CONTAINERD_K3S_CONFIG}" > "${CONTAINERD_K3S_CRIS_CONFIG}"
-		cat << EOF > "${CONTAINERD_SERVICE_FILE}"
+		return
+	fi
+	sed -e "s[${K3S_SOCKET_DIR}/containerd.sock[${CONTAINERD_SOCKET_FILE}[" "${CONTAINERD_K3S_CONFIG}" > "${CONTAINERD_K3S_CRIS_CONFIG}"
+	cat << EOF > "${CONTAINERD_SERVICE_FILE}"
 [Unit]
 Description=Containerd from k3s 
 Documentation=https://k3s.io
@@ -138,7 +139,7 @@ ExecStart=${K3S_DATA_DIR}/data/current/bin/containerd \\
 	'${CONTAINERD_K3S_CRIS_CONFIG}' \\
 
 EOF
-	fi
+	SYSTEMD_CHANGED=1
 }
 
 function remove_containerd() {
@@ -147,6 +148,7 @@ function remove_containerd() {
 		echo "containerd-k3s not installed"
 	else
 		rm -f "${CONTAINERD_K3S_CRIS_CONFIG}" "${CONTAINERD_SERVICE_FILE}"
+		SYSTEMD_CHANGED=1
 	fi
 }
 
@@ -183,33 +185,34 @@ function add_crismux() {
 	if [ -f "${CRISMUX_SERVICE_FILE}" ]
 	then
 		echo "crismux service already installed"
-	else
-		if [ ! -d "${CRISMUX_CONFIG_DIR}" ]
+		return
+	fi
+	if [ ! -d "${CRISMUX_CONFIG_DIR}" ]
+	then
+		mkdir "${CRISMUX_CONFIG_DIR}"
+		if [ $? -gt 0 ]
 		then
-			mkdir "${CRISMUX_CONFIG_DIR}"
-			if [ $? -gt 0 ]
-			then
-				echo "Confiuration directory ${CRISMUX_CONFIG_DIR} of crismux invalid"
-				exit 1
-			fi
-		fi
-		if [ ! -z "${CRISMUX_ARTIFACT_URL}" ]
-		then
-			wget -O ${CRISMUX_EXECUTABLE_FILE} "${CRISMUX_ARTIFACT_URL}"
-			if [ $? -gt 0 ]
-			then
-				echo "getting ${CRISMUX_EXECUTABLE_FILE} from ${CRISMUX_ARTIFACT_URL} failed"
-				exit 1
-			fi
-		elif [ ! -z "${CRISMUX_ARTIFACT_LOCAL}" ]
-		then
-			cp "${CRISMUX_ARTIFACT_LOCAL}" "${CRISMUX_EXECUTABLE_FILE}"
-			chmod a+x "${CRISMUX_EXECUTABLE_FILE}"
-		else
-			echo "Do not have access to crismux plese set either CRISMUX_ARTIFACT_LOCAL or CRISMUX_ARTIFACT_URL"
+			echo "Confiuration directory ${CRISMUX_CONFIG_DIR} of crismux invalid"
 			exit 1
 		fi
-		cat << EOF > "${CRISMUX_CONFIG_FILE}"
+	fi
+	if [ ! -z "${CRISMUX_ARTIFACT_URL}" ]
+	then
+		wget -O ${CRISMUX_EXECUTABLE_FILE} "${CRISMUX_ARTIFACT_URL}"
+		if [ $? -gt 0 ]
+		then
+			echo "getting ${CRISMUX_EXECUTABLE_FILE} from ${CRISMUX_ARTIFACT_URL} failed"
+			exit 1
+		fi
+	elif [ ! -z "${CRISMUX_ARTIFACT_LOCAL}" ]
+	then
+		cp "${CRISMUX_ARTIFACT_LOCAL}" "${CRISMUX_EXECUTABLE_FILE}"
+		chmod a+x "${CRISMUX_EXECUTABLE_FILE}"
+	else
+		echo "Do not have access to crismux plese set either CRISMUX_ARTIFACT_LOCAL or CRISMUX_ARTIFACT_URL"
+		exit 1
+	fi
+	cat << EOF > "${CRISMUX_CONFIG_FILE}"
 runtimes:
   default: "unix://${CONTAINERD_SOCKET_FILE}"
 # This is the runtime for the secure containers
@@ -219,7 +222,7 @@ tls:
   key: "/path/to/key.pem"
   ca: "/path/to/ca.pem"
 EOF
-		cat << EOF > "${CRISMUX_SERVICE_FILE}"
+	cat << EOF > "${CRISMUX_SERVICE_FILE}"
 [Unit]
 Description=Crismux for k3s
 Wants=network-online.target
@@ -254,7 +257,7 @@ ExecStart=${CRISMUX_EXECUTABLE_FILE} \
 	'${CRISMUX_SOCKET_FILE}' \
 
 EOF
-	fi
+	SYSTEMD_CHANGED=1
 }
 
 function remove_crismux() {
@@ -262,6 +265,7 @@ function remove_crismux() {
 	then
 		echo "crismux not installed"
 	else
+		SYSTEMD_CHANGED=1
 		rm -f "${CRISMUX_SERVICE_FILE}" "${CRISMUX_EXECUTABLE_FILE}" "${CRISMUX_SOCKET_FILE}" 
 		rm -rf "${CRISMUX_CONFIG_DIR}"
 	fi
@@ -304,7 +308,7 @@ function check_crismux() {
 }
 
 function start_services() {
-	systemctl daemon-reload
+	[ ${SYSTEMD_CHANGED} -gt 0 ] && systemctl daemon-reload
 	systemctl stop -f k3s
 	i=0
 	while [ $i -lt 12 ]
@@ -363,10 +367,11 @@ function report_status_service() {
 }
 
 function execute_install() {
+	: ${K3S_MODIFIED:=0}
+	: ${SYSTEMD_CHANGED:=0}
 	modify_existing_k3s
 	add_containerd
 	add_crismux
-	: ${K3S_MODIFIED:=0}
 	if [ ${K3S_MODIFIED} -gt 0 ]
 	then
 		start_services
@@ -387,17 +392,18 @@ function execute_verify() {
 }
 
 function execute_clean() {
+	: ${K3S_MODIFIED:=0}
+	: ${SYSTEMD_CHANGED:=0}
 	stop_service containerd-k3s
 	stop_service crismux
 	revert_existing_k3s
 	remove_crismux
 	remove_containerd
-	: ${K3S_MODIFIED:=0}
+	[ ${SYSTEMD_CHANGED} -gt 0 ] && systemctl daemon-reload
 	if [ ${K3S_MODIFIED} -gt 0 ]
 	then
-		systemd stop k3s
-		systemd daemon-reload
-		systemd start k3s
+		systemctl stop k3s
+		systemctl start k3s
 	fi
 }
 

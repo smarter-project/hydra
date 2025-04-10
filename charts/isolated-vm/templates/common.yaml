@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application.appName }}
+  labels:
+    name: {{ .Values.application.appName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.application.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.application.appName }}
+    spec: 
+      hostname: {{ .Values.application.appName }}
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: True
+      containers:
+        - name: {{ .Values.application.appName }}
+          image: {{ .Values.application.image }}:{{ .Values.application.imageVersion }}
+          env:
+            - name: VM_SSH_AUTHORIZED_KEY
+              value: {{ .Values.application.sshkey }}
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: image
+              mountPath: /root/image
+            - name: kubelet
+              mountPath: /var/lib/kubelet
+            - name: pods
+              mountPath: /var/log/pods
+      volumes:
+        - name: image
+          hostPath:
+            path: /srv/shared-container-volumes/image
+        - name: kubelet
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: pods
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+      terminationGracePeriodSeconds: 30
