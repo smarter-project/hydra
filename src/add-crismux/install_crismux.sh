@@ -1,6 +1,7 @@
 #!/bin/bash
 
 : ${DEBUG:=0}
+: ${ONLY_EXIT_IN_ERROR:=0}
 [ ${DEBUG} -gt 0 ] && set -x
 : ${SYSTEMD_DIR:="/etc/systemd/system"}
 : ${K3S_SERVICE_FILE:="${SYSTEMD_DIR}/k3s.service"}
@@ -449,5 +450,12 @@ case $COMMAND in
 		usage;;
 esac
 
-exit 0
 
+[ ${ONLY_EXIT_IN_ERROR} -eq 0 ] && exit 0
+
+while true
+do
+	sleep 60000
+done
+
+exit 0

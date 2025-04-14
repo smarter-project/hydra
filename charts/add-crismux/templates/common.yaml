@@ -1,11 +1,10 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: {{ .Values.application.appName }}
   labels:
     name: {{ .Values.application.appName }}
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: {{ .Values.application.appName }}
@@ -17,10 +16,13 @@ spec:
       hostname: {{ .Values.application.appName }}
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: True
-      restartPolicy: Never
+      restartPolicy: Always
       containers:
         - name: {{ .Values.application.appName }}
           image: {{ .Values.application.image }}:{{ .Values.application.imageVersion }}
+          env:
+            - name: ONLY_EXIT_IN_ERROR
+              value: "1"
           args: ["install"] 
           imagePullPolicy: IfNotPresent
           volumeMounts:

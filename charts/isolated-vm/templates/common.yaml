@@ -1,11 +1,10 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: {{ .Values.application.appName }}
   labels:
     name: {{ .Values.application.appName }}
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: {{ .Values.application.appName }}
@@ -20,9 +19,93 @@ spec:
       containers:
         - name: {{ .Values.application.appName }}
           image: {{ .Values.application.image }}:{{ .Values.application.imageVersion }}
+          {{- if .Values.configuration }}
           env:
+            {{- if .Values.configuration.sshkey }}
             - name: VM_SSH_AUTHORIZED_KEY
-              value: {{ .Values.application.sshkey }}
+              value: {{ .Values.configuration.sshkey }}
+            {{- end }}
+            {{- if .Values.configuration.debug }}
+            - name: DEBUG
+              value: {{ .Values.configuration.debug }}
+            {{- end }}
+            {{- if .Values.configuration.dry_run_only }}
+            - name: DRY_RUN_ONLY
+              value: {{ .Values.configuration.dry_run_only }}
+            {{- end }}
+            {{- if .Values.configuration.copy_image_backup }}
+            - name: COPY_IMAGE_BACKUP
+              value: {{ .Values.configuration.copy_image_backup }}
+            {{- end }}
+            {{- if .Values.configuration.default_image }}
+            - name: DEFAULT_IMAGE
+              value: {{ .Values.configuration.default_image }}
+            {{- end }}
+            {{- if .Values.configuration.default_kernel_version }}
+            - name: DEFAULT_KERNEL_VERSION
+              value: {{ .Values.configuration.default_kernel_version }}
+            {{- end }}
+            {{- if .Values.configuration.vm_username }}
+            - name: VM_USERNAME
+              value: {{ .Values.configuration.vm_username }}
+            {{- end }}
+            {{- if .Values.configuration.vm_password }}
+            - name: VM_PASSWORD
+              value: {{ .Values.configuration.vm_password }}
+            {{- end }}
+            {{- if .Values.configuration.vm_salt }}
+            - name: VM_SALT
+              value: {{ .Values.configuration.vm_salt }}
+            {{- end }}
+            {{- if .Values.configuration.password_encrypted }}
+            - name: VM_PASSWORD_ENCRYPTED
+              value: {{ .Values.configuration.password_encrypted }}
+            {{- end }}
+            {{- if .Values.configuration.vm_hostname }}
+            - name: VM_HOSTNAME
+              value: {{ .Values.configuration.vm_hostname }}
+            {{- end }}
+            {{- if .Values.configuration.kernel_version }}
+            - name: KERNEL_VERSION
+              value: {{ .Values.configuration.kernel_version }}
+            {{- end }}
+            {{- if .Values.configuration.default_dir_image }}
+            - name: DEFAULT_DIR_IMAGE
+              value: {{ .Values.configuration.default_dir_image }}
+            {{- end }}
+            {{- if .Values.configuration.default_dir_k3s_var_linux_root }}
+            - name: DEFAULT_DIR_K3S_VAR_LINUX_ROOT
+              value: {{ .Values.configuration.default_dir_k3s_var_linux_root }}
+            {{- end }}
+            {{- if .Values.configuration.default_source_image }}
+            - name: DEFAULT_SOURCE_IMAGE
+              value: {{ .Values.configuration.default_source_image }}
+            {{- end }}
+            {{- if .Values.configuration.default_kvm_host_sshd_port }}
+            - name: DEFAULT_KVM_HOST_SSHD_PORT
+              value: {{ .Values.configuration.default_kvm_host_sshd_port }}
+            {{- end }}
+            {{- if .Values.configuration.default_kvm_host_containerd_port }}
+            - name: DEFAULT_KVM_HOST_CONTAINERD_PORT
+              value: {{ .Values.configuration.default_kvm_host_containerd_port }}
+            {{- end }}
+            {{- if .Values.configuration.default_csi_grpc_proxy_url }}
+            - name: DEFAULT_CSI_GRPC_PROXY_URL
+              value: {{ .Values.configuration.default_csi_grpc_proxy_url }}
+            {{- end }}
+            {{- if .Values.configuration.default_kvm_ports_redirect }}
+            - name: DEFAULT_KVM_PORTS_REDIRECT
+              value: {{ .Values.configuration.default_kvm_ports_redirect }}
+            {{- end }}
+            {{- if .Values.configuration.kvm_cpu }}
+            - name: KVM_CPU
+              value: {{ .Values.configuration.kvm_cpu }}
+            {{- end }}
+            {{- if .Values.configuration.kvm_memory }}
+            - name: KVM_MEMORY
+              value: {{ .Values.configuration.kvm_memory }}
+            {{- end }}
+          {{- end }}
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: image

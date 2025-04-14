@@ -19,11 +19,22 @@ The script runs under MacOS, Linux, docker and k3s.
     - docker installed on the host
 
 ## K3s
-    - running installation of K3s
+    - running installation of K3s (can be installed using k3sup
+    - helm
 
 # Motivation
 
 # Usage
+
+## Helm
+
+```
+helm repo add hydra https://smarter-project.github.io/hydra/
+helm install \
+     --set "isolated-vm.configuration.sshkey=<public ssh key to use>" \
+     <local name> hydra/hydra
+```
+isolated-vm.configuration.sshkey allows ssh login to VM
 
 ## Docker
 

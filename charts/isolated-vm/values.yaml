@@ -8,5 +8,24 @@ application:
   imageVersion: main
 
 configuration:
-  # add an sshkey to be able to access the vm using ssh
-  sshkey: 
+  #sshkey: "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBACoPc1TlQnwj0ODCzyZR432YgAUtJ2Hrk7+aty/5R8/oxfvpQbiqcoBUuyOmoD7PZij1PcEKGUvPeOJsVNEvMQLwAHVDx10sKg2zYptcZyuyAdChkfCd8NVm+Rz25lCKNVuXaXocCJe2MQKet0cPyYcEhrCJTuUzJcF6uoVAHdfqZg4Ag== alefer02@c02v513uhv2t.usa.arm.com"
+  #debug:
+  #dry_run_only:
+  #copy_image_backup:
+  #default_image:
+  #default_kernel_version:
+  #vm_username:
+  #vm_password:
+  #vm_salt:
+  #password_encrypted:
+  #vm_hostname:
+  #kernel_version:
+  #default_dir_image:
+  #default_dir_k3s_var_linux_root:
+  #default_source_image:
+  #default_kvm_host_sshd_port:
+  #default_kvm_host_containerd_port:
+  #default_csi_grpc_proxy_url:
+  #default_kvm_ports_redirect:
+  #kvm_cpu:
+  #kvm_memory:
