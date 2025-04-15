@@ -108,16 +108,20 @@ spec:
           {{- end }}
           imagePullPolicy: IfNotPresent
           volumeMounts:
+            {{- if .Values.configuration.local_node_image_dir }}
             - name: image
               mountPath: /root/image
+            {{- end }}
             - name: kubelet
               mountPath: /var/lib/kubelet
             - name: pods
               mountPath: /var/log/pods
       volumes:
+        {{- if .Values.configuration.local_node_image_dir }}
         - name: image
           hostPath:
-            path: /srv/shared-container-volumes/image
+            path: {{ .Values.configuration.local_node_image_dir }}
+        {{- end }}
         - name: kubelet
           hostPath:
             path: /var/lib/kubelet

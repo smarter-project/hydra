@@ -36,6 +36,13 @@ helm install \
 ```
 isolated-vm.configuration.sshkey allows ssh login to VM
 
+add
+```
+--set "configuration.local_node_image_dir="
+```
+to store images at the container and not on the node
+
+
 ## Docker
 
 ### TL;DR

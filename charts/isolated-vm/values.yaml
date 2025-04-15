@@ -8,6 +8,8 @@ application:
   imageVersion: main
 
 configuration:
+  # Set this to empty string to use local storage (at the container)
+  local_node_image_dir: "/srv/shared-container-volumes/image"
   #sshkey: "ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBACoPc1TlQnwj0ODCzyZR432YgAUtJ2Hrk7+aty/5R8/oxfvpQbiqcoBUuyOmoD7PZij1PcEKGUvPeOJsVNEvMQLwAHVDx10sKg2zYptcZyuyAdChkfCd8NVm+Rz25lCKNVuXaXocCJe2MQKet0cPyYcEhrCJTuUzJcF6uoVAHdfqZg4Ag== alefer02@c02v513uhv2t.usa.arm.com"
   #debug:
   #dry_run_only:
