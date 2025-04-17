@@ -1,12 +1,12 @@
 # home-orchestrator
 
-This chart deploys crismux
+This chart removes crismux
 
 ## TL;DR
 
 ```console
 helm repo add hydra https://smarter-project.github.io/hydra/
-helm install --create-namespace --namespace <namespace to use> add-crismux hydra/add-crismux
+helm install --create-namespace --namespace <namespace to use> remove-crismux hydra/add-crismux
 ```
 
 # Overview
@@ -23,7 +23,7 @@ This chart assumes a full deployment of k3s with traefik, etc.
 # Uninstalling the Chart
 
 ```
-helm delete add-crismux --namespace <namespace to use>
+helm delete remove-crismux --namespace <namespace to use>
 ```
 
 # Parameters

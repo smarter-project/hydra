@@ -8,4 +8,3 @@ application:
   imageVersion: main
 
 configuration:
-   crismuxurl: "https://gitlab.arm.com/api/v4/projects/596/packages/generic/crismux/v1.0.0/crismux"

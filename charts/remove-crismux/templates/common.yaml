@@ -23,13 +23,7 @@ spec:
           env:
             - name: ONLY_EXIT_IN_ERROR
               value: "1"
-            {{- if .Values.configuration }}
-            {{- if .Values.configuration.crismuxurl }}
-            - name: CRISMUX_ARTIFACT_URL
-              value: {{ .Values.configuration.crismuxurl }}
-            {{- end }}
-            {{- end }}
-          args: ["install"] 
+          args: ["clean"] 
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: systemctl
