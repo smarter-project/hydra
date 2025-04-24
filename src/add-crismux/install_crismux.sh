@@ -12,7 +12,7 @@
 : ${CRISMUX_CONFIG_FILE:="${CRISMUX_CONFIG_DIR}/config.yaml"}
 : ${CRISMUX_EXECUTABLE_FILE:="${K3S_DATA_DIR}/data/current/bin/crismux"}
 : ${CRISMUX_SOCKET_FILE:="${K3S_SOCKET_DIR}/crismux.sock"}
-: ${CRISMUX_ARTIFACT_URL:=""}
+: ${CRISMUX_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/596/packages/generic/crismux/v1.0.0/crismux"}
 : ${CRISMUX_ARTIFACT_LOCAL:="$(pwd)/crismux"}
 : ${CONTAINERD_SERVICE_NAME:="containerd-k3s"}
 : ${CONTAINERD_SERVICE_FILE:="${SYSTEMD_DIR}/${CONTAINERD_SERVICE_NAME}.service"}
@@ -208,11 +208,11 @@ function add_crismux() {
 	elif [ ! -z "${CRISMUX_ARTIFACT_LOCAL}" ]
 	then
 		cp "${CRISMUX_ARTIFACT_LOCAL}" "${CRISMUX_EXECUTABLE_FILE}"
-		chmod a+x "${CRISMUX_EXECUTABLE_FILE}"
 	else
 		echo "Do not have access to crismux plese set either CRISMUX_ARTIFACT_LOCAL or CRISMUX_ARTIFACT_URL"
 		exit 1
 	fi
+	chmod a+x "${CRISMUX_EXECUTABLE_FILE}"
 	cat << EOF > "${CRISMUX_CONFIG_FILE}"
 runtimes:
   default: "unix://${CONTAINERD_SOCKET_FILE}"

@@ -1,14 +1,17 @@
 # Part of Smart-home security demo using AI - LLMs
 
-This module starts a VM running debian 12 with containerd and enables access to it with TCP connection.
-It runs the VM using KVM or HVF acceleration  if possible. 
-The script runs under MacOS, Linux, docker and k3s. 
+Hydra creates an isolated environment to run containers. A single VM is created with containerd.
+Hydra is composed by isolated-vm and add-crismux. The first creates a vm, it can be use as stand-alone, inside docker or run as a helm chart. The second installs crismux enabling a single kubelet to talk to multiple containerd instances. 
+ 
+Isolated-vm VM using KVM or HVF acceleration  if possible. 
+The scripts run under MacOS, Linux, docker and k3s. 
 
 # Requirements
 
 ## Linux 
     - KVM
     - wget
+    - mkisofs
 
 ## MacOS
     - Homebrew (strongly suggested)
@@ -26,7 +29,7 @@ The script runs under MacOS, Linux, docker and k3s.
 
 # Usage
 
-## Helm
+## Helm (install both crismux and isolated-vm charts)
 
 ```
 helm repo add hydra https://smarter-project.github.io/hydra/
@@ -45,7 +48,10 @@ to store images at the container and not on the node
 
 ## Docker
 
-### TL;DR
+### Isolated-vm
+
+#### TL;DR
+
 ```
 docker run \
     -d \
@@ -61,7 +67,7 @@ docker run \
 
 Update `<file with SSH public key>` and `<local image directory>` with the correct files. `<local image directory>` has to have a full path.
 
-### Details
+#### Details
 
 The directory "image" located on the directory `<local image directory>`. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
 A few variables of list below (user configuration, shared directories for example) will re-download the image. 
@@ -116,15 +122,31 @@ THe following variables configures the script:
 | `VM_HOSTNAME` | vm-host | Hostname |
 | `VM_SSH_AUTHORIZED_KEY` | | ssh public key to add to authorized_key for the user VM_USERNAME |
 
+### Crismux
+
 ## Linux and MacOS
 
-### TL;DR
-clone the repository and run the script
+clone the repository
 ```
 git clone https://github.com/smarter-project/hydra
-cd hydra
+```
+
+### Isolated-vm
+
+#### TL;DR
+
+Run the script start-vm.sh to create the VM
+```
+cd hydra/src/isolated-vm
 ./start-vm.sh
 ```
 
 It will start a VM using local directory image. If run as root (linux) it will also try to share the directories `/var/lib/kubelet` and `/var/log/pods`.
 
+### Crismux (needed if using kubernetes)
+
+Run the script install_crismux.sh to enable crismux
+```
+cd hydra/src/add-crismux
+./install_crismux.sh install
+```
