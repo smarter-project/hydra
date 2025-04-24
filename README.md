@@ -1,9 +1,9 @@
 # Part of Smart-home security demo using AI - LLMs
 
-Hydra creates an isolated environment to run containers. A single VM is created with containerd.
-Hydra is composed by isolated-vm and add-crismux. The first creates a vm, it can be use as stand-alone, inside docker or run as a helm chart. The second installs crismux enabling a single kubelet to talk to multiple containerd instances. 
- 
-Isolated-vm VM using KVM or HVF acceleration  if possible. 
+Hydra creates an isolated environment to run containers. A single VM is created wiorh containerd and csi-grpc-proxy enabling access to containerd via a TCP connection.;
+Hydra is composed by isolated-vm and add-crismux. The first creates a vm. The start-vm.sh can be used stand-alone, inside docker container or run as a helm chart. The second installs crismux enabling a single kubelet to talk to multiple containerd instances. 
+
+Isolated-vm VM utilizes KVM or HVF acceleration if possible. 
 The scripts run under MacOS, Linux, docker and k3s. 
 
 # Requirements

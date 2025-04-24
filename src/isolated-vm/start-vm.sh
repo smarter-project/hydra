@@ -325,6 +325,8 @@ write_files:
     WantedBy=multi-user.target
   path: /etc/systemd/system/csi-grpc-proxy.service
 - content: |
+    [plugins."io.containerd.grpc.v1.cri".containerd]
+            default_runtime_name = "nelly"
     [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly]
             privileged_without_host_devices = false
             runtime_type = "io.containerd.runc.v2"
