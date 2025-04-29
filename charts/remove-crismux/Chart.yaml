@@ -1,5 +1,5 @@
 apiVersion: v2
-name: add-crismux
+name: remove-crismux
 description: Add crismux to k3s nodes
 home: https://getsmarter.io
 # A chart can be either an 'application' or a 'library' chart.
