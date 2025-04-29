@@ -70,7 +70,7 @@ Update `<file with SSH public key>` and `<local image directory>` with the corre
 #### Details
 
 The directory "image" located on the directory `<local image directory>`. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
-A few variables of list below (user configuration, shared directories for example) will re-download the image. 
+A few variables of list below (user configuration, shared directories for example) if changed from when the image was first download will trigger a re-download of image. 
 SSH will be availabe at port 5555 and Containerd CRI will be available at port 35000. 
 A csi-proxy or crismux running on the host can be used to convert that port to a socket if required.
 
