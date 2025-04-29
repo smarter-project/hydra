@@ -49,7 +49,7 @@ esac
 : ${DEFAULT_KVM_HOST_SSHD_PORT:="5555"}
 : ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
-: ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by coma
+: ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
 
 IMAGE_RESTART=0
 
@@ -221,6 +221,7 @@ function check_kvm_memory_cpu() {
 
 function resize_kvm_image() {
 	KVM_IMG_RES=$(qemu-img info "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" 2>&1)
+	KVM_IMG_SIZE=$((${DEFAULT_KVM_DISK_SIZE}+0))
 	if [ $? -ne 0 ]
 	then
 		echo "qemu-img return $? and '${KVM_IMG_RES}'"
@@ -228,17 +229,17 @@ function resize_kvm_image() {
 	fi
 	CURR_IMG_SIZE=$(echo "${KVM_IMG_RES}" | grep '^virtual size' | sed -e "s/^.*(//" -e "s/ .*//")
 	CURR_IMG_SIZE=$((${CURR_IMG_SIZE}/1024/1024/1024))
-	if [ ${CURR_IMG_SIZE} -lt ${DEFAULT_KVM_DISK_SIZE} ]
+	if [ ${CURR_IMG_SIZE} -lt ${KVM_IMG_SIZE} ]
 	then
-		echo "Resizing image to ${DEFAULT_KVM_DISK_SIZE}g"
-		#qemu-img resize "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ${DEFAULT_KVM_DISK_SIZE}g
+		echo "Resizing image to ${KVM_IMG_SIZE}g"
+		qemu-img resize "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ${KVM_IMG_SIZE}g
 		if [ $? -ne 0 ]
 		then
 			echo "qemu-img resize return $?"
 			exit 1
 		fi
 	else
-		echo "Image size (${CURR_IMG_SIZE}G) equal or larger than required(${DEFAULT_KVM_DISK_SIZE}G)"
+		echo "Image size (${CURR_IMG_SIZE}G) equal or larger than required(${KVM_IMG_SIZE}G)"
 	fi
 }
 
