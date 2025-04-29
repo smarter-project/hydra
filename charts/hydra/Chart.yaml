@@ -32,10 +32,10 @@ dependencies:
     repository: https://smarter-project.github.io/hydra
   - name: add-crismux
     version: 0.9.0
-    repository: https://smarter-project.github.io/add-crismux
+    repository: https://smarter-project.github.io/hydra
   - name: remove-crismux
     version: 0.9.0
-    repository: https://smarter-project.github.io/remove-crismux
+    repository: https://smarter-project.github.io/hydra
 sources:
   - https://github.com/smarter-project/documentation
 annotations:
