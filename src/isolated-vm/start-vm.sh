@@ -40,7 +40,7 @@ esac
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
 : ${DEFAULT_KVM_UNKNOWN_MEMORY:=2}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
-: ${DEFAULT_KVM_DARWIN_BIOS:="/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH_M}-code.fd"}
+: ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd | head -n 1)}
 : ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
 : ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
 #: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
