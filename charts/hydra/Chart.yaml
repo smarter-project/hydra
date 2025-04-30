@@ -29,13 +29,13 @@ kubeVersion: ">=1.18.0-0"
 dependencies:
   - name: isolated-vm
     version: 0.9.0
-    repository: https://smarter-project.github.io/hydra
+    repository: file://../isolated-vm
   - name: add-crismux
     version: 0.9.0
-    repository: https://smarter-project.github.io/hydra
+    repository: file://../add-crismux
   - name: remove-crismux
     version: 0.9.0
-    repository: https://smarter-project.github.io/hydra
+    repository: file://../remove-crismux
 sources:
   - https://github.com/smarter-project/documentation
 annotations:
