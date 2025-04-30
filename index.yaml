@@ -1,0 +1,121 @@
+apiVersion: v1
+entries:
+  add-crismux:
+  - annotations:
+      artifacthub.io/changes: |
+        - Initial release
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/maintainers: |
+        - name: Alexandre Ferreira
+          email: alexandref75@gmail.com
+      artifacthub.io/prerelease: "false"
+      artifacthub.io/signKey: |
+        fingerprint: 82AD709FEC4ECA4C84B093889BDC9DE410CFC23B
+        url: https://smarter-project.github.io/home-orchestrator/pgp_keys.asc
+    apiVersion: v2
+    appVersion: 0.9.0
+    created: "2025-04-30T15:36:56.464660881Z"
+    description: Add crismux to k3s nodes
+    digest: 3d3cdef5126bff4d1a7a33bcedef68c5440d32bb1e1e2ef348a1a2b0de272bfe
+    home: https://getsmarter.io
+    icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
+    kubeVersion: '>=1.18.0-0'
+    name: add-crismux
+    sources:
+    - https://github.com/smarter-project/documentation
+    type: application
+    urls:
+    - https://github.com/smarter-project/hydra/releases/download/add-crismux-0.9.0/add-crismux-0.9.0.tgz
+    version: 0.9.0
+  hydra:
+  - annotations:
+      artifacthub.io/changes: |
+        - Initial release
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/maintainers: |
+        - name: Alexandre Ferreira
+          email: alexandref75@gmail.com
+      artifacthub.io/prerelease: "false"
+      artifacthub.io/signKey: |
+        fingerprint: 82AD709FEC4ECA4C84B093889BDC9DE410CFC23B
+        url: https://smarter-project.github.io/home-orchestrator/pgp_keys.asc
+    apiVersion: v2
+    appVersion: 0.9.0
+    created: "2025-04-30T15:36:56.66737312Z"
+    dependencies:
+    - name: isolated-vm
+      repository: file://../isolated-vm
+      version: 0.9.0
+    - name: add-crismux
+      repository: file://../add-crismux
+      version: 0.9.0
+    - name: remove-crismux
+      repository: file://../remove-crismux
+      version: 0.9.0
+    description: Install isolated-vm and crismux
+    digest: 726689e8555dc89c21f8fad2f7f52cb60beb49d16d9e25daa16ce274527bd6a4
+    home: https://getsmarter.io
+    icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
+    kubeVersion: '>=1.18.0-0'
+    name: hydra
+    sources:
+    - https://github.com/smarter-project/documentation
+    type: application
+    urls:
+    - https://github.com/smarter-project/hydra/releases/download/hydra-0.9.0/hydra-0.9.0.tgz
+    version: 0.9.0
+  isolated-vm:
+  - annotations:
+      artifacthub.io/changes: |
+        - Initial release
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/maintainers: |
+        - name: Alexandre Ferreira
+          email: alexandref75@gmail.com
+      artifacthub.io/prerelease: "false"
+      artifacthub.io/signKey: |
+        fingerprint: 82AD709FEC4ECA4C84B093889BDC9DE410CFC23B
+        url: https://smarter-project.github.io/home-orchestrator/pgp_keys.asc
+    apiVersion: v2
+    appVersion: 0.9.0
+    created: "2025-04-30T15:36:56.891893543Z"
+    description: Run a VM with containerd and csi-grpc-proxy configured
+    digest: 265e1e0d6f3d286f63ae2cd6cf7ea5805b4071af071d908ae9f1d288f30ca070
+    home: https://getsmarter.io
+    icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
+    kubeVersion: '>=1.18.0-0'
+    name: isolated-vm
+    sources:
+    - https://github.com/smarter-project/documentation
+    type: application
+    urls:
+    - https://github.com/smarter-project/hydra/releases/download/isolated-vm-0.9.0/isolated-vm-0.9.0.tgz
+    version: 0.9.0
+  remove-crismux:
+  - annotations:
+      artifacthub.io/changes: |
+        - Initial release
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/maintainers: |
+        - name: Alexandre Ferreira
+          email: alexandref75@gmail.com
+      artifacthub.io/prerelease: "false"
+      artifacthub.io/signKey: |
+        fingerprint: 82AD709FEC4ECA4C84B093889BDC9DE410CFC23B
+        url: https://smarter-project.github.io/home-orchestrator/pgp_keys.asc
+    apiVersion: v2
+    appVersion: 0.9.0
+    created: "2025-04-30T15:36:57.072392476Z"
+    description: Add crismux to k3s nodes
+    digest: f10cbc5d244621aa5c4f6788e32b024e2c1753e0aa24499d030145dc9f2d8e4b
+    home: https://getsmarter.io
+    icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
+    kubeVersion: '>=1.18.0-0'
+    name: remove-crismux
+    sources:
+    - https://github.com/smarter-project/documentation
+    type: application
+    urls:
+    - https://github.com/smarter-project/hydra/releases/download/remove-crismux-0.9.0/remove-crismux-0.9.0.tgz
+    version: 0.9.0
+generated: "2025-04-30T15:36:57.072402996Z"
