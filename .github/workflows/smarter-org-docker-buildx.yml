@@ -1,9 +1,8 @@
-name: Docker Image BuildX CI and Publish
-
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
 # separate terms of service, privacy policy, and support
 # documentation.
+name: Docker Image BuildX CI and Publish
 
 on:
   schedule:
@@ -117,7 +116,7 @@ jobs:
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image (add-crismux)
-        id: build-and-push-isolated-vm
+        id: build-and-push-add-crismux
         uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 #v3
         with:
           platforms: "linux/amd64,linux/arm64"
