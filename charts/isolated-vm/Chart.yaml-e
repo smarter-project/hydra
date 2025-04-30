@@ -1,6 +1,6 @@
 apiVersion: v2
-name: hydra
-description: Install isolated-vm and crismux
+name: isolated-vm
+description: Run a VM with containerd and csi-grpc-proxy configured
 home: https://getsmarter.io
 # A chart can be either an 'application' or a 'library' chart.
 #
@@ -15,27 +15,17 @@ type: application
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 0.9.2
+version: 0.9.1
 
 # This is the version number of the application being deployed. This version number should be
 # incremented each time you make changes to the application. Versions are not expected to
 # follow Semantic Versioning. They should reflect the version the application is using.
 # It is recommended to use it with quotes.
-appVersion: "0.9.2"
+appVersion: "0.9.1"
 
 icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
 kubeVersion: ">=1.18.0-0"
 
-dependencies:
-  - name: isolated-vm
-    version: 0.9.2
-    repository: file://../isolated-vm
-  - name: add-crismux
-    version: 0.9.2
-    repository: file://../add-crismux
-  - name: remove-crismux
-    version: 0.9.2
-    repository: file://../remove-crismux
 sources:
   - https://github.com/smarter-project/documentation
 annotations:
