@@ -21,7 +21,7 @@ version: 0.9.2
 # incremented each time you make changes to the application. Versions are not expected to
 # follow Semantic Versioning. They should reflect the version the application is using.
 # It is recommended to use it with quotes.
-appVersion: "0.9.01
+appVersion: "0.9.2"
 
 icon: https://github.com/smarter-project/documentation/raw/main/ARM1636_Project_Logo_ST2_RGB_V1.png
 kubeVersion: ">=1.18.0-0"
