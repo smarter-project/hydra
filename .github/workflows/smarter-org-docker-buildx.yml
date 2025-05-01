@@ -75,8 +75,8 @@ jobs:
         uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 #v3
         with:
           platforms: "linux/amd64,linux/arm64"
-          context: .
-          file: src/isolated-vm/Dockerfile
+          context: src/isolated-vm
+          file: Dockerfile
           build-args: ""
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-isolated-vm.outputs.tags }}
@@ -121,8 +121,8 @@ jobs:
         uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 #v3
         with:
           platforms: "linux/amd64,linux/arm64"
-          context: .
-          file: src/add-crismux/Dockerfile
+          context: src/add-crismux
+          file: Dockerfile
           build-args: ""
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-add-crismux.outputs.tags }}
