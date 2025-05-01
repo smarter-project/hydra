@@ -79,8 +79,8 @@ jobs:
           file: src/isolated-vm/Dockerfile
           build-args: ""
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-isolated-vm.outputs.tags }}
+          labels: ${{ steps.meta-isolated-vm.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -95,7 +95,7 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
-        run: echo "${{ steps.meta.outputs.tags }}" | xargs -I {} cosign sign --yes {}@${{ steps.build-and-push.outputs.digest }}
+        run: echo "${{ steps.meta-isolated-vm.outputs.tags }}" | xargs -I {} cosign sign --yes {}@${{ steps.build-and-push-isolated-vm.outputs.digest }}
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
@@ -125,8 +125,8 @@ jobs:
           file: src/add-crismux/Dockerfile
           build-args: ""
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-add-crismux.outputs.tags }}
+          labels: ${{ steps.meta-add-crismux.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -141,4 +141,4 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
-        run: echo "${{ steps.meta.outputs.tags }}" | xargs -I {} cosign sign --yes {}@${{ steps.build-and-push.outputs.digest }}
+        run: echo "${{ steps.meta-add-xrismux.outputs.tags }}" | xargs -I {} cosign sign --yes {}@${{ steps.build-and-push-add-xrismux.outputs.digest }}
