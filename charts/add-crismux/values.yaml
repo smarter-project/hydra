@@ -4,7 +4,7 @@
 
 application:
   appName: add-crismux
-  image: ghcr.io/smarter-project/hydra-add-crismux
+  image: ghcr.io/smarter-project/hydra/crismux
   imageVersion: main
 
 configuration:
