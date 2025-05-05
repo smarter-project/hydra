@@ -16,6 +16,7 @@ esac
 : ${DEBUG:=0}
 [ ${DEBUG} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
+: ${RUN_BARE_KERNEL:=0}
 : ${DISABLE_9P_MOUNTS:=0}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
@@ -50,6 +51,11 @@ esac
 : ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
+: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/research/smarter/edgeai/rimdworkspace/-/jobs/146089/artifacts/download?file_type=archive"}
+: ${DEFAULT_RIMD_ARTIFACT_FILENAME:="artifacts.zip"}
+: ${DEFAULT_RIMD_KERNEL_FILENAME:="final_artifact/Image.gz"}
+: ${DEFAULT_RIMD_IMAGE_FILENAME:="final_artifact/initramfs.linux_arm64.cpio"}
+: ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="final_artifact/something.qcow2"}
 
 IMAGE_RESTART=0
 
@@ -149,6 +155,28 @@ function check_image_exists() {
 	fi
 }
 
+function check_kernel_image() {
+	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" ]
+	then
+		echo "Image ${DEFAULT_RIMD_ARTIFACT_FILENAME} exists on disk, reusing"
+	else
+		echo "Download image from ${DEFAULT_SOURCE_IMAGE}"
+		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
+		if [ $? -ne 0 ]
+		then
+			echo "Download unsucceful, bailing out"
+			exit 1
+		fi
+	fi
+	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}" \
+		-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
+		-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+	then
+		return
+	fi
+	unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}"
+}
+
 function check_kvm_memory_cpu() {
 	# check qemu version and if is available
 	#
@@ -220,7 +248,8 @@ function check_kvm_memory_cpu() {
 }
 
 function resize_kvm_image() {
-	KVM_IMG_RES=$(qemu-img info "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" 2>&1)
+	IMAGE_TO_RESIZE=$1
+	KVM_IMG_RES=$(qemu-img info "${IMAGE_TO_RESIZE}" 2>&1)
 	KVM_IMG_SIZE=$((${DEFAULT_KVM_DISK_SIZE}+0))
 	if [ $? -ne 0 ]
 	then
@@ -232,7 +261,7 @@ function resize_kvm_image() {
 	if [ ${CURR_IMG_SIZE} -lt ${KVM_IMG_SIZE} ]
 	then
 		echo "Resizing image to ${KVM_IMG_SIZE}g"
-		qemu-img resize "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ${KVM_IMG_SIZE}g
+		qemu-img resize "${IMAGE_TO_RESIZE}" ${KVM_IMG_SIZE}g
 		if [ $? -ne 0 ]
 		then
 			echo "qemu-img resize return $?"
@@ -463,7 +492,11 @@ function check_k3s_log_pods_dir() {
 
 # ----- Main -------------------------------------------------------------------------------------
 
-check_requirements qemu-system-${ARCH_M} mkisofs wget
+check_requirements qemu-system-${ARCH_M} 
+if [ ${RUN_BARE_KERNEL} -eq 0 ]
+then
+	check_requirements mkisofs wget
+fi
 
 check_ports_redirection
 
@@ -471,15 +504,25 @@ check_kvm_kvm_hvf
 
 check_image_directory
 
-check_cloud_init_create
+if [ ${RUN_BARE_KERNEL} -eq 0 ]
+then
+	check_cloud_init_create
 
-check_image_exists
+	check_image_exists
+else
+	check_kernel_image
+fi
 
 check_k3s_log_pods_dir
 
 check_kvm_memory_cpu
 
-resize_kvm_image
+if [ ${RUN_BARE_KERNEL} -eq 0 ]
+then
+	resize_kvm_image "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
+else
+	resize_kvm_image "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
+fi
 
 BIOS_OPTION=""
 if [ ! -z "${KVM_BIOS}" ]
@@ -494,37 +537,101 @@ then
 		   -virtfs local,path=${DIR_K3S_VAR}/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1 " 
 fi
 
-echo 'qemu-system-'${ARCH_M}' \
-	-m '${KVM_MEMORY}'g \
-	-smp '${KVM_CPU}' \
-	-M '${KVM_MACHINE_TYPE}' \
-	'${HW_ACCEL}' \
-	'${BIOS_OPTION}' \
-	-cpu '${KVM_CPU_TYPE}' \
-	-drive if=none,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}'",id=hd0 \
-	-drive file="'${DEFAULT_DIR_IMAGE}'/cloud-init.iso",index=1,media=cdrom \
-	-device virtio-blk-pci,drive=hd0 \
-	-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
-	-netdev user,id=net0'${REDIRECT_PORT}' \
-	-serial mon:stdio \
-	'${VIRTFS_9P}' \
- 	-nographic'
 
-[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
+if [ ${RUN_BARE_KERNEL} -eq 0 ]
+then
+	echo 'qemu-system-'${ARCH_M}' \
+		-m '${KVM_MEMORY}'g \
+		-smp '${KVM_CPU}' \
+		-M '${KVM_MACHINE_TYPE}' \
+		'${HW_ACCEL}' \
+		'${BIOS_OPTION}' \
+		-cpu '${KVM_CPU_TYPE}' \
+		-drive if=none,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}'",id=hd0 \
+		-drive file="'${DEFAULT_DIR_IMAGE}'/cloud-init.iso",index=1,media=cdrom \
+		-device virtio-blk-pci,drive=hd0 \
+		-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
+		-netdev user,id=net0'${REDIRECT_PORT}' \
+		-serial mon:stdio \
+		'${VIRTFS_9P}' \
+		-nographic'
 
-qemu-system-${ARCH_M} \
-	-m ${KVM_MEMORY}g \
-	-smp ${KVM_CPU} \
-	-M ${KVM_MACHINE_TYPE} \
-	${HW_ACCEL} \
-	${BIOS_OPTION} \
-	-cpu ${KVM_CPU_TYPE} \
-	-drive if=none,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}",id=hd0 \
-	-drive file="${DEFAULT_DIR_IMAGE}/cloud-init.iso",index=1,media=cdrom \
-	-device virtio-blk-pci,drive=hd0 \
-	-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
-	-netdev user,id=net0${REDIRECT_PORT} \
-	${VIRTFS_9P} \
- 	-nographic
+	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
+
+	exec qemu-system-${ARCH_M} \
+		-m ${KVM_MEMORY}g \
+		-smp ${KVM_CPU} \
+		-M ${KVM_MACHINE_TYPE} \
+		${HW_ACCEL} \
+		${BIOS_OPTION} \
+		-cpu ${KVM_CPU_TYPE} \
+		-drive if=none,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}",id=hd0 \
+		-drive file="${DEFAULT_DIR_IMAGE}/cloud-init.iso",index=1,media=cdrom \
+		-device virtio-blk-pci,drive=hd0 \
+		-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
+		-netdev user,id=net0${REDIRECT_PORT} \
+		${VIRTFS_9P} \
+		-nographic
+else
+	echo 'qemu-system-'${ARCH_M}' \
+		-m '${KVM_MEMORY}'g \
+		-smp '${KVM_CPU}' \
+		-M '${KVM_MACHINE_TYPE}' \
+		'${HW_ACCEL}' \
+		'${BIOS_OPTION}' \
+		-cpu '${KVM_CPU_TYPE}' \
+		-drive if=pflash,format=raw,file=efi.img,readonly=on \
+		-drive if=pflash,format=raw,file=varstore.img \
+		-kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'" \
+		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
+		-netdev user,id=n1'${REDIRECT_PORT}' \
+		-device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
+		-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3 \
+		-initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" \
+		-drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
+		-device virtio-blk-device,id=drv0,drive=drive1 \
+		-serial mon:stdio \
+		'${VIRTFS_9P}' \
+		-nographic'
+
+
+	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
+
+	exec qemu-system-${ARCH_M} \
+		-m ${KVM_MEMORY}g \
+		-smp ${KVM_CPU} \
+		-M ${KVM_MACHINE_TYPE} \
+		${HW_ACCEL} \
+		-drive if=pflash,format=raw,file=efi.img,readonly=on \
+		-drive if=pflash,format=raw,file=varstore.img \
+		-kernel ./Image.gz \
+		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
+		-netdev user,id=n1,hostfwd=tcp:127.0.0.1:5555-:22,hostfwd=tcp:127.0.0.1:35000-:35000,hostfwd=tcp:127.0.0.1:35001-:35001 \
+		-device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
+		-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3 \
+		-initrd ./initramfs.linux_arm64.cpio \
+		-drive if=none,id=drive1,file=something.qcow2 \
+		-device virtio-blk-device,id=drv0,drive=drive1 \
+		-virtfs local,path=/var/lib/kubelet,mount_tag=host0,security_model=passthrough,id=host0 \
+		-virtfs local,path=/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1
+fi
+#qemu-system-aarch64 \
+#    -enable-kvm \
+#    -m 16384 \
+#    -cpu host \
+#    -M virt 
+#    -nographic \
+#    -drive if=pflash,format=raw,file=efi.img,readonly=on \
+#    -dr1Give if=pflash,format=raw,file=varstore.img \
+#    -kernel ./Image.gz \
+#    -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
+#    -netdev user,id=n1,hostfwd=tcp:127.0.0.1:5555-:22,hostfwd=tcp:127.0.0.1:35000-:35000,hostfwd=tcp:127.0.0.1:35001-:35001 \
+#    -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
+#    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3 \
+#    -initrd ./initramfs.linux_arm64.cpio \
+#    -drive if=none,id=drive1,file=something.qcow2 \
+#    -device virtio-blk-device,id=drv0,drive=drive1 \
+#    -virtfs local,path=/var/lib/kubelet,mount_tag=host0,security_model=passthrough,id=host0 \
+#    -virtfs local,path=/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1
 
 exit 0
