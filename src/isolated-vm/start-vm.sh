@@ -51,7 +51,10 @@ esac
 : ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
-: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/research/smarter/edgeai/rimdworkspace/-/jobs/146089/artifacts/download?file_type=archive"}
+: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts"}
+: ${RIMD_ATIFACT_URL_USER:=""}
+: ${RIMD_ATIFACT_URL_PASS:=""}
+: ${RIMD_ATIFACT_URL_TOKEN:=""}
 : ${DEFAULT_RIMD_ARTIFACT_FILENAME:="artifacts.zip"}
 : ${DEFAULT_RIMD_KERNEL_FILENAME:="final_artifact/Image.gz"}
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="final_artifact/initramfs.linux_arm64.cpio"}
@@ -160,11 +163,26 @@ function check_kernel_image() {
 	then
 		echo "Image ${DEFAULT_RIMD_ARTIFACT_FILENAME} exists on disk, reusing"
 	else
-		echo "Download image from ${DEFAULT_SOURCE_IMAGE}"
-		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
+		echo "Download image from ${DEFAULT_RIMD_ARTIFACT_URL}"
+		USER_ID="-nv"
+		if [ ! -z "${RIMD_ATIFACT_URL_USER}" ]
+		then
+			USER_ID="--user=${RIMD_ATIFACT_URL_USER}"
+		fi
+		USER_PASS="-nv"
+		if [ ! -z "${RIMD_ATIFACT_URL_USER}" ]
+		then
+			USER_PASS="--password=${RIMD_ATIFACT_URL_PASS}"
+		fi
+		USER_TOKEN="-nv"
+		if [ ! -z "${RIMD_ATIFACT_URL_TOKEN}" ]
+		then
+			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ATIFACT_URL_TOKEN}"
+		fi
+		wget "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "image/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
 		if [ $? -ne 0 ]
 		then
-			echo "Download unsucceful, bailing out"
+			echo "Download unsuccessful error ${RES}, bailing out"
 			exit 1
 		fi
 	fi
@@ -573,6 +591,12 @@ then
 		${VIRTFS_9P} \
 		-nographic
 else
+	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
+	if [ "${OS}" == "Darwin" ]
+        then
+		VSOCK_DEVICE=""
+	fi
+
 	echo 'qemu-system-'${ARCH_M}' \
 		-m '${KVM_MEMORY}'g \
 		-smp '${KVM_CPU}' \
@@ -586,7 +610,7 @@ else
 		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
 		-netdev user,id=n1'${REDIRECT_PORT}' \
 		-device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
-		-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3 \
+		'${VSOCK_DEVICE}' \
 		-initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" \
 		-drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
@@ -602,18 +626,19 @@ else
 		-smp ${KVM_CPU} \
 		-M ${KVM_MACHINE_TYPE} \
 		${HW_ACCEL} \
-		-drive if=pflash,format=raw,file=efi.img,readonly=on \
-		-drive if=pflash,format=raw,file=varstore.img \
-		-kernel ./Image.gz \
+		${BIOS_OPTION} \
+		-cpu ${KVM_CPU_TYPE} \
+		-kernel "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}" \
 		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
-		-netdev user,id=n1,hostfwd=tcp:127.0.0.1:5555-:22,hostfwd=tcp:127.0.0.1:35000-:35000,hostfwd=tcp:127.0.0.1:35001-:35001 \
+		-netdev user,id=n1${REDIRECT_PORT} \
 		-device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
-		-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3 \
-		-initrd ./initramfs.linux_arm64.cpio \
-		-drive if=none,id=drive1,file=something.qcow2 \
+		${VSOCK_DEVICE} \
+		-initrd "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
+		-drive if=none,id=drive1,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
-		-virtfs local,path=/var/lib/kubelet,mount_tag=host0,security_model=passthrough,id=host0 \
-		-virtfs local,path=/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1
+		-serial mon:stdio \
+		${VIRTFS_9P} \
+		-nographic
 fi
 #qemu-system-aarch64 \
 #    -enable-kvm \
