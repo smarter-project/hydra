@@ -105,6 +105,54 @@ spec:
             - name: KVM_MEMORY
               value: {{ .Values.configuration.kvm_memory }}
             {{- end }}
+            {{- if .Values.configuration.run_bare_kernel }}
+            - name: RUN_BARE_KERNEL
+              value: {{ .Values.configuration.run_bare_kernel }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_articaft_url }}
+            - name: DEFAULT_RIMD_ARTIFACT_URL
+              value: {{ .Values.configuration.rimd_articaft_url }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_atifact_url_user }}
+            - name: RIMD_ARTIFACT_URL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rimd-access-credentials
+                  key: user
+              value: {{ .Values.configuration.rimd_atifact_url_user }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_atifact_url_pass }}
+            - name: RIMD_ARTIFACT_URL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rimd-access-credentials
+                  key: pass
+              value: {{ .Values.configuration.rimd_atifact_url_pass }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_artifact_url_token }}
+            - name: RIMD_ARTIFACT_URL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rimd-access-credentials
+                  key: token
+              value: {{ .Values.configuration.rimd_artifact_url_token }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_artifact_filename }}
+            - name: DEFAULT_RIMD_ARTIFACT_FILENAME
+              value: {{ .Values.configuration.rimd_artifact_filename }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_kernel_filename }}
+            - name: DEFAULT_RIMD_KERNEL_FILENAME
+              value: {{ .Values.configuration.rimd_kernel_filename }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_image_filename }}
+            - name: DEFAULT_RIMD_IMAGE_FILENAME
+              value: {{ .Values.configuration.rimd_image_filename }}
+            {{- end }}
+            {{- if .Values.configuration.rimd_filesystem_filename }}
+            - name: DEFAULT_RIMD_FILESYSTEM_FILENAME
+              value: {{ .Values.configuration.rimd_filesystem_filename }}
+            {{- end }}
           {{- end }}
           imagePullPolicy: IfNotPresent
           volumeMounts:
@@ -131,3 +179,20 @@ spec:
             path: /var/log/pods
             type: Directory
       terminationGracePeriodSeconds: 30
+{{- if or .Values.configuration.rimd_atifact_url_user .Values.configuration.rimd_atifact_url_pass .Values.configuration.rimd_artifact_url_token }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rimd-access-credentials
+data:
+  {{- if .Values.configuration.rimd_atifact_url_user }}
+  user: {{ .Values.configuration.rimd_atifact_url_user }}
+  {{- end }}
+  {{- if.Values.configuration.rimd_atifact_url_pass }}
+  pass: {{ .Values.configuration.rimd_atifact_url_pass }}
+  {{- end }}
+  {{- if.Values.configuration.rimd_artifact_url_token }}
+  token: {{ .Values.configuration.rimd_artifact_url_token }}
+  {{- end }}
+{{- end }}

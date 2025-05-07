@@ -52,9 +52,9 @@ esac
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
 : ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts"}
-: ${RIMD_ATIFACT_URL_USER:=""}
-: ${RIMD_ATIFACT_URL_PASS:=""}
-: ${RIMD_ATIFACT_URL_TOKEN:=""}
+: ${RIMD_ARTIFACT_URL_USER:=""}
+: ${RIMD_ARTIFACT_URL_PASS:=""}
+: ${RIMD_ARTIFACT_URL_TOKEN:=""}
 : ${DEFAULT_RIMD_ARTIFACT_FILENAME:="artifacts.zip"}
 : ${DEFAULT_RIMD_KERNEL_FILENAME:="final_artifact/Image.gz"}
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="final_artifact/initramfs.linux_arm64.cpio"}
@@ -165,19 +165,19 @@ function check_kernel_image() {
 	else
 		echo "Download image from ${DEFAULT_RIMD_ARTIFACT_URL}"
 		USER_ID="-nv"
-		if [ ! -z "${RIMD_ATIFACT_URL_USER}" ]
+		if [ ! -z "${RIMD_ARTIFACT_URL_USER}" ]
 		then
-			USER_ID="--user=${RIMD_ATIFACT_URL_USER}"
+			USER_ID="--user=${RIMD_ARTIFACT_URL_USER}"
 		fi
 		USER_PASS="-nv"
-		if [ ! -z "${RIMD_ATIFACT_URL_USER}" ]
+		if [ ! -z "${RIMD_ARTIFACT_URL_USER}" ]
 		then
-			USER_PASS="--password=${RIMD_ATIFACT_URL_PASS}"
+			USER_PASS="--password=${RIMD_ARTIFACT_URL_PASS}"
 		fi
 		USER_TOKEN="-nv"
-		if [ ! -z "${RIMD_ATIFACT_URL_TOKEN}" ]
+		if [ ! -z "${RIMD_ARTIFACT_URL_TOKEN}" ]
 		then
-			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ATIFACT_URL_TOKEN}"
+			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ARTIFACT_URL_TOKEN}"
 		fi
 		wget "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "image/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
 		if [ $? -ne 0 ]

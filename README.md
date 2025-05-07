@@ -123,9 +123,9 @@ THe following variables configures the script:
 | `VM_SSH_AUTHORIZED_KEY` | | ssh public key to add to authorized_key for the user VM_USERNAME |
 | `RUN_BARE_KERNEL` | 0 | if > 0 then Use kernel and initrd instead of cloud image | 
 | `DEFAULT_RIMD_ARTIFACT_URL` | https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts | where to download the artifacts (kernel + initrd) |
-| `RIMD_ATIFACT_URL_USER` | "" | User to authenticate to get artifacts from URL | 
-| `RIMD_ATIFACT_URL_PASS` | "" | Password to authenticate to get artifacts from URL |
-| `RIMD_ATIFACT_URL_TOKEN` |  "" | Token to authenticate to get artifacts from URL |
+| `RIMD_ARTIFACT_URL_USER` | "" | User to authenticate to get artifacts from URL | 
+| `RIMD_ARTIFACT_URL_PASS` | "" | Password to authenticate to get artifacts from URL |
+| `RIMD_ARTIFACT_URL_TOKEN` |  "" | Token to authenticate to get artifacts from URL |
 | `DEFAULT_RIMD_ARTIFACT_FILENAME` | artifacts.zip | Filename to use when storing the downloaded file |
 | `DEFAULT_RIMD_KERNEL_FILENAME` | final_artifact/Image.gz | Filename that contains the kernel to run |
 | `DEFAULT_RIMD_IMAGE_FILENAME` | final_artifact/initramfs.linux_arm64.cpio | Filename that contains the initrd to run |
@@ -155,7 +155,7 @@ It will start a VM using local directory image. If run as root (linux) it will a
 Run the script start-vm.sh to create the VM using the kernel/initird instead of cloud image
 ```
 cd hydra/src/isolated-vm
-RUN_BARE_KERNEL=1 RIMD_ATIFACT_URL_TOKEN=<access token> ./start-vm.sh
+RUN_BARE_KERNEL=1 RIMD_ARTIFACT_URL_TOKEN=<access token> ./start-vm.sh
 ```
 
 ### Crismux (needed if using kubernetes)
