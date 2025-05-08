@@ -41,7 +41,7 @@ esac
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
 : ${DEFAULT_KVM_UNKNOWN_MEMORY:=2}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
-: ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd | head -n 1)}
+[ ${OS} == "Darwin" ] && ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
 : ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
 : ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
 #: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
@@ -49,6 +49,7 @@ esac
 # If these values are empty, the ports will not be redirected.
 : ${DEFAULT_KVM_HOST_SSHD_PORT:="5555"}
 : ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
+: ${DEFAULT_KVM_HOST_RIMD_PORT:="35001"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
 : ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts"}
@@ -467,6 +468,7 @@ function check_ports_redirection() {
 	REDIRECT_PORT=""
 	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_SSHD_PORT}-:22"
 	[ -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
+	[ -z "${DEFAULT_KVM_HOST_RIMD_PORT}" -o ${RUN_BARE_KERNEL} -eq 0 ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_RIMD_PORT}-:35001"
 
 	REDIRECTS=${DEFAULT_KVM_PORTS_REDIRECT//;/ } 
 	for REDIRECT in ${REDIRECTS}
@@ -599,10 +601,9 @@ else
 
 	echo 'qemu-system-'${ARCH_M}' \
 		-m '${KVM_MEMORY}'g \
-		-smp '${KVM_CPU}' \
 		-M '${KVM_MACHINE_TYPE}' \
+		-smp '${KVM_CPU}' \
 		'${HW_ACCEL}' \
-		'${BIOS_OPTION}' \
 		-cpu '${KVM_CPU_TYPE}' \
 		-drive if=pflash,format=raw,file=efi.img,readonly=on \
 		-drive if=pflash,format=raw,file=varstore.img \
@@ -614,8 +615,8 @@ else
 		-initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" \
 		-drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
-		-serial mon:stdio \
 		'${VIRTFS_9P}' \
+		-serial mon:stdio \
 		-nographic'
 
 
@@ -623,10 +624,9 @@ else
 
 	exec qemu-system-${ARCH_M} \
 		-m ${KVM_MEMORY}g \
-		-smp ${KVM_CPU} \
 		-M ${KVM_MACHINE_TYPE} \
+		-smp ${KVM_CPU} \
 		${HW_ACCEL} \
-		${BIOS_OPTION} \
 		-cpu ${KVM_CPU_TYPE} \
 		-kernel "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}" \
 		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
@@ -636,8 +636,8 @@ else
 		-initrd "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
 		-drive if=none,id=drive1,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
-		-serial mon:stdio \
 		${VIRTFS_9P} \
+		-serial mon:stdio \
 		-nographic
 fi
 #qemu-system-aarch64 \
