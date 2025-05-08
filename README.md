@@ -144,7 +144,7 @@ git clone https://github.com/smarter-project/hydra
 
 #### TL;DR
 
-Run the script start-vm.sh to create the VM
+Run the script start-vm.sh to create the VM using debian cloud image
 ```
 cd hydra/src/isolated-vm
 ./start-vm.sh
@@ -152,7 +152,7 @@ cd hydra/src/isolated-vm
 
 It will start a VM using local directory image. If run as root (linux) it will also try to share the directories `/var/lib/kubelet` and `/var/log/pods`.
 
-Run the script start-vm.sh to create the VM using the kernel/initird instead of cloud image
+Run the script start-vm.sh to create the VM using the kernel/initrd instead of cloud image
 ```
 cd hydra/src/isolated-vm
 RUN_BARE_KERNEL=1 RIMD_ARTIFACT_URL_TOKEN=<access token> ./start-vm.sh
