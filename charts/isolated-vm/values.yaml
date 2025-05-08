@@ -31,3 +31,12 @@ configuration:
   #default_kvm_ports_redirect:
   #kvm_cpu:
   #kvm_memory:
+  #run_bare_kernel:
+  #rimd_articaft_url:
+  #rimd_atifact_url_user: use base64 converted data here 
+  #rimd_atifact_url_pass: use base64 converted data here 
+  #rimd_artifact_url_token: use base64 converted data here 
+  #rimd_artifact_filename:
+  #rimd_kernel_filename:
+  #rimd_image_filename:
+  #rimd_filesystem_filename:
