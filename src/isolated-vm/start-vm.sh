@@ -275,6 +275,7 @@ function resize_kvm_image() {
 		echo "qemu-img return $? and '${KVM_IMG_RES}'"
 		exit 1
 	fi
+	KVM_IMG_SIZE=$((${DEFAULT_KVM_DISK_SIZE}+0))
 	CURR_IMG_SIZE=$(echo "${KVM_IMG_RES}" | grep '^virtual size' | sed -e "s/^.*(//" -e "s/ .*//")
 	CURR_IMG_SIZE=$((${CURR_IMG_SIZE}/1024/1024/1024))
 	if [ ${CURR_IMG_SIZE} -lt ${KVM_IMG_SIZE} ]
@@ -470,6 +471,15 @@ function check_ports_redirection() {
 	[ -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
 	[ -z "${DEFAULT_KVM_HOST_RIMD_PORT}" -o ${RUN_BARE_KERNEL} -eq 0 ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_RIMD_PORT}-:35001"
 
+	if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ]
+	then
+		return
+	fi
+	if [[ ! ${DEFAULT_KVM_PORTS_REDIRECT} =~ ^([1-9][0-9]+:[[1-9][0-9]+;)*[1-9][0-9]+:[[1-9][0-9]+$ ]]
+	then
+		echo "Incorrect format for DEFAULT_KVM_PORTS_REDIRECT. It should be either empty, <Port externali>:<Port internal> or sequence of redirects separated by ;."
+		exit -1
+	fi
 	REDIRECTS=${DEFAULT_KVM_PORTS_REDIRECT//;/ } 
 	for REDIRECT in ${REDIRECTS}
 	do
