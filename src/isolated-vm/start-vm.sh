@@ -93,7 +93,12 @@ function check_kvm_kvm_hvf() {
 				x86_64|amd64)
 					: ${KVM_CPU_TYPE:="qemu64-v1"};;
 				arm64|aarch64)
-					: ${KVM_CPU_TYPE:="cortex-a76"};;
+					if [ $KVM_VERSION_MAJOR -ge 7 ]
+					then
+						: ${KVM_CPU_TYPE:="cortex-a76"}
+					else
+						: ${KVM_CPU_TYPE:="cortex-a72"}
+					fi;;
 				*)
 					: ${KVM_CPU_TYPE:="qemu64-v1"};;
 			esac
@@ -196,7 +201,7 @@ function check_kernel_image() {
 	unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 }
 
-function check_kvm_memory_cpu() {
+function check_kvm_version() {
 	# check qemu version and if is available
 	#
 	KVM_OUTPUT=$(qemu-system-${ARCH_M} --version)
@@ -218,13 +223,17 @@ function check_kvm_memory_cpu() {
 	fi
 
 	echo "Using QEMU version ${KVM_VERSION}"
+	KVM_VERSION_MAJOR=$(echo "${KVM_VERSION}" | cut -d "." -f 1)
+	KVM_VERSION_MINOR=$(echo "${KVM_VERSION}" | cut -d "." -f 2)
+	KVM_VERSION_REV=$(echo "${KVM_VERSION}" | cut -d "." -f 3)
+}
 
+function check_kvm_memory_cpu() {
 	if [ "${OS}" == "GNU/Linux" ]
 	then
 		: ${KVM_CPU:=${DEFAULT_KVM_LINUX_CPU}}
 		: ${KVM_MEMORY:=${DEFAULT_KVM_LINUX_MEMORY}}
-		KVM_MAJOR=$(echo "${KVM_VERSION}" | cut -d "." -f 1)
-		if [ ${KVM_MAJOR} -ge 9 ]
+		if [ ${KVM_VERSION_MAJOR} -ge 9 ]
 		then
 			: ${KVM_BIOS:=${DEFAULT_KVM_LINUX_v9_BIOS}}
 		else
@@ -527,6 +536,8 @@ if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
 	check_requirements mkisofs wget
 fi
+
+check_kvm_version
 
 check_ports_redirection
 
