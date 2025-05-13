@@ -2,10 +2,13 @@
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/hydra)](https://artifacthub.io/packages/search?repo=hydra)
 
-Hydra creates an isolated environment to run containers. A single VM is created wiorh containerd and csi-grpc-proxy enabling access to containerd via a TCP connection.;
-Hydra is composed by isolated-vm and add-crismux. The first creates a vm. The start-vm.sh can be used stand-alone, inside docker container or run as a helm chart. The second installs crismux enabling a single kubelet to talk to multiple containerd instances. 
+Hydra provides an isolated environment to run containers. The isolated containers run in a single VMi managed by an instance of containerd and csi-grpc-proxy. csi-grpc-proxy enable access to containerd via a TCP connection.
+It also provides a way to install crismux that enables kubelet to talk to multiple containerd instances. Each containerd is responsible for a runtime class in kubernetes.
 
-Isolated-vm VM utilizes KVM or HVF acceleration if possible. 
+Hydra is composed by two separate modules: isolated-vm and add-crismux. Isolated-vm starts a VM with desired properties. Isolated-vm can be used as stand-alone by directly running start-vm.sh script on MacOS/Linux, as docker container or run using a helm chart. 
+The second module install crismux in a k3s/k8s installation. It also installs a "nelly" runtime class. This runtime class will direct kubelet to use the isolated VM to run the container instead of running it on the host.
+
+Isolated-vm VM utilizes KVM or HVF acceleration if avilable. 
 The scripts run under MacOS, Linux, docker and k3s. 
 
 # Requirements
@@ -24,7 +27,7 @@ The scripts run under MacOS, Linux, docker and k3s.
     - docker installed on the host
 
 ## K3s
-    - running installation of K3s (can be installed using k3sup
+    - running installation of K3s (can be installed using k3sup)
     - helm
 
 # Motivation
@@ -45,7 +48,7 @@ add
 ```
 --set "configuration.local_node_image_dir="
 ```
-to store images at the container and not on the node
+to store images at the container and not on the node, because the container filesystem is not persistent, all files will be lost if the container is stopped. 
 
 
 ## Docker
