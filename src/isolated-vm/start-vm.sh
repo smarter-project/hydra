@@ -41,7 +41,7 @@ esac
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
 : ${DEFAULT_KVM_UNKNOWN_MEMORY:=2}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
-[ ${OS} == "Darwin" ] && ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
+[ ${OS} == "Darwin" ] && : ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
 : ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
 : ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
 #: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
@@ -543,7 +543,12 @@ function check_k3s_log_pods_dir() {
 check_requirements qemu-system-${ARCH_M} 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
-	check_requirements mkisofs wget
+	if [ ${OS} == "Darwin" ]
+	then
+		check_requirements wget
+	else
+		check_requirements mkisofs wget
+	fi
 fi
 
 check_kvm_version
