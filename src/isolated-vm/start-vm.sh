@@ -52,14 +52,14 @@ esac
 : ${DEFAULT_KVM_HOST_RIMD_PORT:="35001"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
-: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts"}
+: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/packages/generic/rimdworkspace/v1.0.1/rimdworkspace.tar.gz"}
 : ${RIMD_ARTIFACT_URL_USER:=""}
 : ${RIMD_ARTIFACT_URL_PASS:=""}
 : ${RIMD_ARTIFACT_URL_TOKEN:=""}
-: ${DEFAULT_RIMD_ARTIFACT_FILENAME:="artifacts.zip"}
-: ${DEFAULT_RIMD_KERNEL_FILENAME:="final_artifact/Image.gz"}
-: ${DEFAULT_RIMD_IMAGE_FILENAME:="final_artifact/initramfs.linux_arm64.cpio"}
-: ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="final_artifact/something.qcow2"}
+: ${DEFAULT_RIMD_ARTIFACT_FILENAME:="rimdworkspace.tar.gz"}
+: ${DEFAULT_RIMD_KERNEL_FILENAME:="Image.gz"}
+: ${DEFAULT_RIMD_IMAGE_FILENAME:="initramfs.linux_arm64.cpio"}
+: ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
 
 IMAGE_RESTART=0
 
@@ -185,7 +185,7 @@ function check_kernel_image() {
 		then
 			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ARTIFACT_URL_TOKEN}"
 		fi
-		wget "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "image/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
+		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "image/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
 		if [ $? -ne 0 ]
 		then
 			echo "Download unsuccessful error ${RES}, bailing out"
@@ -198,7 +198,16 @@ function check_kernel_image() {
 	then
 		return
 	fi
-	unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}"
+	if [[ ${DEFAULT_RIMD_ARTIFACT_FILENAME} =~ ^.*\.zip$ ]]
+	then
+		unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}"
+	elif [[ ${DEFAULT_RIMD_ARTIFACT_FILENAME} =~ ^.*\.tar.gz$ || ${DEFAULT_RIMD_ARTIFACT_FILENAME} =~ ^.*\.tar.bz2$ ]]
+	then
+		(cd "${DEFAULT_DIR_IMAGE}";tar -xf "${DEFAULT_RIMD_ARTIFACT_FILENAME}")
+	else
+		echo "File termination unknown so unable to unpack it, bailing out"
+		exit 1
+	fi
 }
 
 function check_kvm_version() {
