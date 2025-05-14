@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 
 HW_ACCEL=""
 REDIRECT_PORT=""
@@ -18,6 +17,7 @@ esac
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${DISABLE_9P_MOUNTS:=0}
+: ${ADDITIONAL_9P_MOUNTS:=""}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
 : ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
@@ -326,13 +326,43 @@ EOF
 	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 #cloud-config
 EOF
-	if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+	if [ ${DISABLE_9P_MOUNTS} -eq 0 -o ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 mounts:
+EOF
+		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+		then
+			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 - [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
+		fi
+		if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
+		then
+			MOUNTS="${ADDITIONAL_9P_MOUNTS}"
+			MOUNT_ID=100
+			while [ ! -z "${MOUNTS}" ]
+			do
+				MOUNT_USED=$(echo "${MOUNTS}" | cut -d '$' -f 1)
+				MOUNTS=$(echo "${MOUNTS}" | cut -d '$' -f 2-)
+				if [ "${MOUNTS}" == "${MOUNT_USED}" ]
+				then
+					MOUNTS=""
+				fi
+				MOUNT_HOST=$(echo "${MOUNT_USED}" | cut -d '|' -f 1)
+				MOUNT_VM=$(echo "${MOUNT_USED}" | cut -d '|' -f 2)
+				if [ -z "${MOUNT_HOST}" -o -z "${MOUNT_VM}" ]
+				then
+					echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
+					exit 1
+				fi
+				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
+EOF
+				MOUNT_ID=$((${MOUNT_ID}+1))
+			done
+		fi
 	fi
 	: ${VM_PASSWORD_ENCRYPTED:=$(echo ${VM_PASSWORD} | openssl passwd -6 -salt ${VM_SALT} -stdin)}
 	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
@@ -588,10 +618,33 @@ fi
 VIRTFS_9P=""
 if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
 then
-	VIRTFS_9P=" -virtfs local,path=${DIR_K3S_VAR}/var/lib/kubelet,mount_tag=host0,security_model=passthrough,id=host0  \
-		   -virtfs local,path=${DIR_K3S_VAR}/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1 " 
+	VIRTFS_9P='-virtfs local,path="'${DIR_K3S_VAR}/var/lib/kubelet'",mount_tag=host0,security_model=passthrough,id=host0 -virtfs local,path="'${DIR_K3S_VAR}/var/log/pods'",mount_tag=host1,security_model=passthrough,id=host1' 
 fi
+VIRTFS_ADDITIONAL_9P=''
+if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
+then
 
+	MOUNTS="${ADDITIONAL_9P_MOUNTS}"
+	MOUNT_ID=100
+	while [ ! -z "${MOUNTS}" ]
+	do
+		MOUNT_USED=$(echo "${MOUNTS}" | cut -d '$' -f 1)
+		MOUNTS=$(echo "${MOUNTS}" | cut -d '$' -f 2-)
+		if [ "${MOUNTS}" == "${MOUNT_USED}" ]
+		then
+			MOUNTS=""
+		fi
+		MOUNT_HOST=$(echo "${MOUNT_USED}" | cut -d '|' -f 1)
+		MOUNT_VM=$(echo "${MOUNT_USED}" | cut -d '|' -f 2)
+		if [ -z "${MOUNT_HOST}" -o -z "${MOUNT_VM}" ]
+		then
+			echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
+			exit 1
+		fi
+		VIRTFS_ADDITIONAL_9P="${VIRTFS_ADDITIONAL_9P}"' -virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+		MOUNT_ID=$((${MOUNT_ID}+1))
+	done
+fi
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
@@ -609,6 +662,7 @@ then
 		-netdev user,id=net0'${REDIRECT_PORT}' \
 		-serial mon:stdio \
 		'${VIRTFS_9P}' \
+		'${VIRTFS_ADDITIONAL_9P}' \
 		-nographic'
 
 	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
@@ -626,6 +680,7 @@ then
 		-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
 		-netdev user,id=net0${REDIRECT_PORT} \
 		${VIRTFS_9P} \
+		${VIRTFS_ADDITIONAL_9P} \
 		-nographic
 else
 	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
@@ -651,6 +706,7 @@ else
 		-drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
 		'${VIRTFS_9P}' \
+		'${VIRTFS_ADDITIONAL_9P}' \
 		-serial mon:stdio \
 		-nographic'
 
@@ -672,6 +728,7 @@ else
 		-drive if=none,id=drive1,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
 		${VIRTFS_9P} \
+		${VIRTFS_ADDITIONAL_9P} \
 		-serial mon:stdio \
 		-nographic
 fi

@@ -90,8 +90,9 @@ THe following variables configures the script:
 | `DRY_RUN_ONLY` | If > 0 will print the command line for the VM and exit | 0 |
 | `DEBUG` | If > 0 will print debug for the script | 0 |
 | `DISABLE_9P_MOUNTS` | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods | 0 |
+| `ADDITIONAL_9P_MOUNTS` | additional mounts format `<host dir>|<vm mount dir>[$<host dir>|<vm mount dir>]` | "" |
 | `COPY_IMAGE_BACKUP` | if > 0 preserve a copy of the image and start form a copy of that image if it exists | 0 |
-| `DEFAULT_KERNEL_VERSION` | kernel version to install | `6.12.12+bpo |
+| `DEFAULT_KERNEL_VERSION` | kernel version to install | `6.12.12+bpo` |
 | `KERNEL_VERSION` | full version to install if a different kernel is required | `linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}` |
 | `DEFAULT_DIR_IMAGE` | Where to store the downloaded image | `$(pwd)/image` |
 | `DEFAULT_DIR_K3S_VAR_DARWIN` | Where to point the 9p mounts if running on MacOS | `$(pwd)/k3s-var` |
@@ -127,6 +128,7 @@ THe following variables configures the script:
 | `VM_HOSTNAME` | Hostname | vm-host |
 | `VM_SSH_AUTHORIZED_KEY` | ssh public key to add to authorized_key for the user VM_USERNAME | |
 | `RUN_BARE_KERNEL` | if > 0 then Use kernel and initrd instead of cloud image | 0 | 
+| `DEFAULT_KVM_PORTS_REDIRECT` | format is `<external>:<internal>[;<external>:<internal>]` | "" |
 | `DEFAULT_RIMD_ARTIFACT_URL` | where to download the artifacts (kernel + initrd) | https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts |
 | `RIMD_ARTIFACT_URL_USER` | User to authenticate to get artifacts from URL | "" | 
 | `RIMD_ARTIFACT_URL_PASS` | Password to authenticate to get artifacts from URL | "" |
