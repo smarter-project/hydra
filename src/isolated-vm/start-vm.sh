@@ -618,9 +618,9 @@ fi
 VIRTFS_9P=""
 if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
 then
-	VIRTFS_9P='-virtfs local,path="'${DIR_K3S_VAR}/var/lib/kubelet'",mount_tag=host0,security_model=passthrough,id=host0 -virtfs local,path="'${DIR_K3S_VAR}/var/log/pods'",mount_tag=host1,security_model=passthrough,id=host1' 
+	VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model=passthrough,id=host0 
+ -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model=passthrough,id=host1' 
 fi
-VIRTFS_ADDITIONAL_9P=''
 if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 then
 
@@ -641,7 +641,13 @@ then
 			echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
 			exit 1
 		fi
-		VIRTFS_ADDITIONAL_9P="${VIRTFS_ADDITIONAL_9P}"' -virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+		if [ -z "${VIRTFS_9P}" ]
+		then
+			VIRTFS_9P='-virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+		else
+			VIRTFS_9P=${VIRTFS_9P}' \
+ -virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+		fi
 		MOUNT_ID=$((${MOUNT_ID}+1))
 	done
 fi
@@ -649,21 +655,20 @@ fi
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
 	echo 'qemu-system-'${ARCH_M}' \
-		-m '${KVM_MEMORY}'g \
-		-smp '${KVM_CPU}' \
-		-M '${KVM_MACHINE_TYPE}' \
-		'${HW_ACCEL}' \
-		'${BIOS_OPTION}' \
-		-cpu '${KVM_CPU_TYPE}' \
-		-drive if=none,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}'",id=hd0 \
-		-drive file="'${DEFAULT_DIR_IMAGE}'/cloud-init.iso",index=1,media=cdrom \
-		-device virtio-blk-pci,drive=hd0 \
-		-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
-		-netdev user,id=net0'${REDIRECT_PORT}' \
-		-serial mon:stdio \
-		'${VIRTFS_9P}' \
-		'${VIRTFS_ADDITIONAL_9P}' \
-		-nographic'
+ -m '${KVM_MEMORY}'g \
+ -smp '${KVM_CPU}' \
+ -M '${KVM_MACHINE_TYPE}' \
+ '${HW_ACCEL}' \
+ '${BIOS_OPTION}' \
+ -cpu '${KVM_CPU_TYPE}' \
+ -drive if=none,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}'",id=hd0 \
+ -drive file="'${DEFAULT_DIR_IMAGE}'/cloud-init.iso",index=1,media=cdrom \
+ -device virtio-blk-pci,drive=hd0 \
+ -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
+ -netdev user,id=net0'${REDIRECT_PORT}' \
+ -serial mon:stdio \
+ '"${VIRTFS_9P}"' \
+ -nographic'
 
 	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
 
@@ -680,7 +685,6 @@ then
 		-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
 		-netdev user,id=net0${REDIRECT_PORT} \
 		${VIRTFS_9P} \
-		${VIRTFS_ADDITIONAL_9P} \
 		-nographic
 else
 	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
@@ -690,25 +694,24 @@ else
 	fi
 
 	echo 'qemu-system-'${ARCH_M}' \
-		-m '${KVM_MEMORY}'g \
-		-M '${KVM_MACHINE_TYPE}' \
-		-smp '${KVM_CPU}' \
-		'${HW_ACCEL}' \
-		-cpu '${KVM_CPU_TYPE}' \
-		-drive if=pflash,format=raw,file=efi.img,readonly=on \
-		-drive if=pflash,format=raw,file=varstore.img \
-		-kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'" \
-		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
-		-netdev user,id=n1'${REDIRECT_PORT}' \
-		-device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
-		'${VSOCK_DEVICE}' \
-		-initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" \
-		-drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
-		-device virtio-blk-device,id=drv0,drive=drive1 \
-		'${VIRTFS_9P}' \
-		'${VIRTFS_ADDITIONAL_9P}' \
-		-serial mon:stdio \
-		-nographic'
+ -m '${KVM_MEMORY}'g \
+ -M '${KVM_MACHINE_TYPE}' \
+ -smp '${KVM_CPU}' \
+ '${HW_ACCEL}' \
+ -cpu '${KVM_CPU_TYPE}' \
+ -drive if=pflash,format=raw,file=efi.img,readonly=on \
+ -drive if=pflash,format=raw,file=varstore.img \
+ -kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'" \
+ -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
+ -netdev user,id=n1'${REDIRECT_PORT}' \
+ -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
+ '${VSOCK_DEVICE}' \
+ -initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" \
+ -drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
+ -device virtio-blk-device,id=drv0,drive=drive1 \
+ '"${VIRTFS_9P}"' \
+ -serial mon:stdio \
+ -nographic'
 
 
 	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
@@ -728,27 +731,8 @@ else
 		-drive if=none,id=drive1,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" \
 		-device virtio-blk-device,id=drv0,drive=drive1 \
 		${VIRTFS_9P} \
-		${VIRTFS_ADDITIONAL_9P} \
 		-serial mon:stdio \
 		-nographic
 fi
-#qemu-system-aarch64 \
-#    -enable-kvm \
-#    -m 16384 \
-#    -cpu host \
-#    -M virt 
-#    -nographic \
-#    -drive if=pflash,format=raw,file=efi.img,readonly=on \
-#    -dr1Give if=pflash,format=raw,file=varstore.img \
-#    -kernel ./Image.gz \
-#    -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
-#    -netdev user,id=n1,hostfwd=tcp:127.0.0.1:5555-:22,hostfwd=tcp:127.0.0.1:35000-:35000,hostfwd=tcp:127.0.0.1:35001-:35001 \
-#    -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
-#    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3 \
-#    -initrd ./initramfs.linux_arm64.cpio \
-#    -drive if=none,id=drive1,file=something.qcow2 \
-#    -device virtio-blk-device,id=drv0,drive=drive1 \
-#    -virtfs local,path=/var/lib/kubelet,mount_tag=host0,security_model=passthrough,id=host0 \
-#    -virtfs local,path=/var/log/pods,mount_tag=host1,security_model=passthrough,id=host1
 
 exit 0
