@@ -332,12 +332,14 @@ EOF
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 mounts:
 EOF
+		VM_MOUNT_POINTS=""
 		if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
 			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 - [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
+			VM_MOUNT_POINTS='"/var/lib/kubelet","/var/log/pods"'
 		fi
 		if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
 		then
@@ -358,6 +360,7 @@ EOF
 					echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
 					exit 1
 				fi
+				VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
 				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
@@ -443,15 +446,47 @@ runcmd:
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
 EOF
+	if [ ! -z "${VM_MOUNT_POINTS}" ]
+	then
+		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ mkdir,"-p",${VM_MOUNT_POINTS} ]
+EOF
+	fi
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-- [ mkdir,"-p","/var/lib/kubelet","/var/log/pods" ]
 - [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
 - [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
 - [ mount, "host0"]
 - [ mount, "host1"]
 EOF
+	fi
+	if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
+	then
+		MOUNTS="${ADDITIONAL_9P_MOUNTS}"
+		MOUNT_ID=100
+		while [ ! -z "${MOUNTS}" ]
+		do
+			MOUNT_USED=$(echo "${MOUNTS}" | cut -d '$' -f 1)
+			MOUNTS=$(echo "${MOUNTS}" | cut -d '$' -f 2-)
+			if [ "${MOUNTS}" == "${MOUNT_USED}" ]
+			then
+				MOUNTS=""
+			fi
+			MOUNT_HOST=$(echo "${MOUNT_USED}" | cut -d '|' -f 1)
+			MOUNT_VM=$(echo "${MOUNT_USED}" | cut -d '|' -f 2)
+			if [ -z "${MOUNT_HOST}" -o -z "${MOUNT_VM}" ]
+			then
+				echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
+				exit 1
+			fi
+			VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
+			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
+- [ mount, "host${MOUNT_ID}"]
+EOF
+			MOUNT_ID=$((${MOUNT_ID}+1))
+		done
 	fi
 	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ systemctl, daemon-reload ]
