@@ -16,7 +16,7 @@ esac
 [ ${DEBUG} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
-: ${DISABLE_9P_MOUNTS:=0}
+: ${DISABLE_9P_KUBELET_MOUNTS:=0}
 : ${ADDITIONAL_9P_MOUNTS:=""}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
@@ -327,12 +327,12 @@ EOF
 	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 #cloud-config
 EOF
-	if [ ${DISABLE_9P_MOUNTS} -eq 0 -o ! -z "${ADDITIONAL_9P_MOUNTS}" ]
+	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 -o ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 mounts:
 EOF
-		if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+		if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
 			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
@@ -443,7 +443,7 @@ runcmd:
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
 EOF
-	if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ mkdir,"-p","/var/lib/kubelet","/var/log/pods" ]
@@ -549,7 +549,7 @@ function check_ports_redirection() {
 }
 
 function check_k3s_log_pods_dir() {
-	if [ ${DISABLE_9P_MOUNTS} -gt 0 ]
+	if [ ${DISABLE_9P_KUBELET_MOUNTS} -gt 0 ]
 	then
 		return
 	fi
@@ -626,7 +626,7 @@ then
 fi
 
 VIRTFS_9P=""
-if [ ${DISABLE_9P_MOUNTS} -eq 0 ]
+if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 then
 	VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model=passthrough,id=host0 
  -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model=passthrough,id=host1' 

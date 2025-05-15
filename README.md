@@ -57,6 +57,8 @@ to store images at the container and not on the node, because the container file
 
 #### TL;DR
 
+
+
 ```
 docker run \
     -d \
@@ -89,9 +91,10 @@ THe following variables configures the script:
 | -------- | ----- | ------------- |
 | `DRY_RUN_ONLY` | If > 0 will print the command line for the VM and exit | 0 |
 | `DEBUG` | If > 0 will print debug for the script | 0 |
-| `DISABLE_9P_MOUNTS` | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods | 0 |
+| `DISABLE_9P_KUBELET_MOUNTS` | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods | 0 |
 | `ADDITIONAL_9P_MOUNTS` | additional mounts format `<host dir>|<vm mount dir>[$<host dir>|<vm mount dir>]` | "" |
 | `COPY_IMAGE_BACKUP` | if > 0 preserve a copy of the image and start form a copy of that image if it exists | 0 |
+| `ALWAYS_REUSE_DISK_IMAGE` | if > 0 reuse existing disk image even if configuration has changed | 0 |
 | `DEFAULT_KERNEL_VERSION` | kernel version to install | `6.12.12+bpo` |
 | `KERNEL_VERSION` | full version to install if a different kernel is required | `linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}` |
 | `DEFAULT_DIR_IMAGE` | Where to store the downloaded image | `$(pwd)/image` |
