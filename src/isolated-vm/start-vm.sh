@@ -643,7 +643,7 @@ then
 		fi
 		if [ -z "${VIRTFS_9P}" ]
 		then
-			VIRTFS_9P='-virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+			VIRTFS_9P='-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
 		else
 			VIRTFS_9P=${VIRTFS_9P}' \
  -virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
