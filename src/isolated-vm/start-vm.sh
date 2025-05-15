@@ -19,6 +19,7 @@ esac
 : ${DISABLE_9P_MOUNTS:=0}
 : ${ADDITIONAL_9P_MOUNTS:=""}
 : ${COPY_IMAGE_BACKUP:=0}
+: ${ALWAYS_REUSE_DISK_IMAGE:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
 : ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
 : ${VM_USERNAME:="vm-user"}
@@ -503,6 +504,15 @@ EOF
 	fi
 		
 	IMAGE_RESTART=1
+	if [ ${ALWAYS_REUSE_DISK_IMAGE} -gt 0 ]
+	then
+		IMAGE_RESTART=0
+		echo "---------------------------------------"
+		echo "System configuration was chenged that requires the VM to restart from an unitialized disk image"
+		echo "but ALWAYS_REUSE_DISK_IMAGE is set so the changes will not be reflected on the VM but will appar"
+		echo "on the command line"
+		echo "---------------------------------------"
+	fi
 	case ${OS} in
 		Darwin)
 			hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
@@ -645,8 +655,8 @@ then
 		then
 			VIRTFS_9P='-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
 		else
-			VIRTFS_9P=${VIRTFS_9P}' \
- -virtfs local,path="'${MOUNT_HOST}'",mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+			VIRTFS_9P=${VIRTFS_9P}' 
+ -virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
 		fi
 		MOUNT_ID=$((${MOUNT_ID}+1))
 	done
@@ -654,38 +664,20 @@ fi
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
-	echo 'qemu-system-'${ARCH_M}' \
- -m '${KVM_MEMORY}'g \
- -smp '${KVM_CPU}' \
- -M '${KVM_MACHINE_TYPE}' \
- '${HW_ACCEL}' \
- '${BIOS_OPTION}' \
- -cpu '${KVM_CPU_TYPE}' \
- -drive if=none,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}'",id=hd0 \
- -drive file="'${DEFAULT_DIR_IMAGE}'/cloud-init.iso",index=1,media=cdrom \
- -device virtio-blk-pci,drive=hd0 \
- -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
- -netdev user,id=net0'${REDIRECT_PORT}' \
- -serial mon:stdio \
- '"${VIRTFS_9P}"' \
+	CMD_LINE='qemu-system-'${ARCH_M}' 
+ -m '${KVM_MEMORY}'g 
+ -smp '${KVM_CPU}' 
+ -M '${KVM_MACHINE_TYPE}' 
+ '${HW_ACCEL}' 
+ '${BIOS_OPTION}' 
+ -cpu '${KVM_CPU_TYPE}' 
+ -drive if=none,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',id=hd0 
+ -drive file='${DEFAULT_DIR_IMAGE}/cloud-init.iso',index=1,media=cdrom 
+ -device virtio-blk-pci,drive=hd0 
+ -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b 
+ -netdev user,id=net0'${REDIRECT_PORT}' 
+ '${VIRTFS_9P}' 
  -nographic'
-
-	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
-
-	exec qemu-system-${ARCH_M} \
-		-m ${KVM_MEMORY}g \
-		-smp ${KVM_CPU} \
-		-M ${KVM_MACHINE_TYPE} \
-		${HW_ACCEL} \
-		${BIOS_OPTION} \
-		-cpu ${KVM_CPU_TYPE} \
-		-drive if=none,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}",id=hd0 \
-		-drive file="${DEFAULT_DIR_IMAGE}/cloud-init.iso",index=1,media=cdrom \
-		-device virtio-blk-pci,drive=hd0 \
-		-device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b \
-		-netdev user,id=net0${REDIRECT_PORT} \
-		${VIRTFS_9P} \
-		-nographic
 else
 	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
 	if [ "${OS}" == "Darwin" ]
@@ -693,46 +685,29 @@ else
 		VSOCK_DEVICE=""
 	fi
 
-	echo 'qemu-system-'${ARCH_M}' \
- -m '${KVM_MEMORY}'g \
- -M '${KVM_MACHINE_TYPE}' \
- -smp '${KVM_CPU}' \
- '${HW_ACCEL}' \
- -cpu '${KVM_CPU_TYPE}' \
- -drive if=pflash,format=raw,file=efi.img,readonly=on \
- -drive if=pflash,format=raw,file=varstore.img \
- -kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'" \
- -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
- -netdev user,id=n1'${REDIRECT_PORT}' \
- -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
- '${VSOCK_DEVICE}' \
- -initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" \
- -drive if=none,id=drive1,file="'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" \
- -device virtio-blk-device,id=drv0,drive=drive1 \
- '"${VIRTFS_9P}"' \
- -serial mon:stdio \
+	CMD_LINE='qemu-system-'${ARCH_M}' 
+ -m '${KVM_MEMORY}'g 
+ -M '${KVM_MACHINE_TYPE}' 
+ -smp '${KVM_CPU}' 
+ '${HW_ACCEL}' 
+ -cpu '${KVM_CPU_TYPE}' 
+ -kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'" 
+ -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" 
+ -netdev user,id=n1'${REDIRECT_PORT}' 
+ -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca 
+ '${VSOCK_DEVICE}' 
+ -initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" 
+ -drive "if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" 
+ -device virtio-blk-device,id=drv0,drive=drive1 
+ '${VIRTFS_9P}' 
+ -serial mon:stdio 
  -nographic'
-
-
-	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
-
-	exec qemu-system-${ARCH_M} \
-		-m ${KVM_MEMORY}g \
-		-M ${KVM_MACHINE_TYPE} \
-		-smp ${KVM_CPU} \
-		${HW_ACCEL} \
-		-cpu ${KVM_CPU_TYPE} \
-		-kernel "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}" \
-		-append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" \
-		-netdev user,id=n1${REDIRECT_PORT} \
-		-device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca \
-		${VSOCK_DEVICE} \
-		-initrd "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
-		-drive if=none,id=drive1,file="${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" \
-		-device virtio-blk-device,id=drv0,drive=drive1 \
-		${VIRTFS_9P} \
-		-serial mon:stdio \
-		-nographic
 fi
+
+echo "${CMD_LINE}"
+
+[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
+
+exec ${CMD_LINE}
 
 exit 0
