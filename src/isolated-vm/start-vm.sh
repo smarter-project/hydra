@@ -660,11 +660,16 @@ then
 	BIOS_OPTION="-bios ${KVM_BIOS}"
 fi
 
+VIRTFS_9P_SECURITY_MODEL="passthrough"
+if [ "${OS}" == "Darwin" ]
+then
+	VIRTFS_9P_SECURITY_MODEL="mapped"
+fi
 VIRTFS_9P=""
 if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 then
-	VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model=passthrough,id=host0 
- -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model=passthrough,id=host1' 
+	VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0 
+ -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host1' 
 fi
 if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 then
@@ -686,13 +691,12 @@ then
 			echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
 			exit 1
 		fi
-		if [ -z "${VIRTFS_9P}" ]
+		if [ ! -z "${VIRTFS_9P}" ]
 		then
-			VIRTFS_9P='-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
-		else
 			VIRTFS_9P=${VIRTFS_9P}' 
- -virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model=passthrough,id=host'${MOUNT_ID} 
+ '
 		fi
+		VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID} 
 		MOUNT_ID=$((${MOUNT_ID}+1))
 	done
 fi
