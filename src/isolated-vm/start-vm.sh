@@ -339,7 +339,7 @@ EOF
 - [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 - [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
-			VM_MOUNT_POINTS='"/var/lib/kubelet","/var/log/pods"'
+			VM_MOUNT_POINTS=',"/var/lib/kubelet","/var/log/pods"'
 		fi
 		if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
 		then
@@ -360,12 +360,7 @@ EOF
 					echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
 					exit 1
 				fi
-				if [ ! -z ${VM_MOUNT_POINTS} ]
-				then
-					VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
-				else
-					VM_MOUNT_POINTS=\"${MOUNT_VM}\"
-				fi
+				VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
 				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
@@ -454,7 +449,7 @@ EOF
 	if [ ! -z "${VM_MOUNT_POINTS}" ]
 	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-- [ mkdir,"-p",${VM_MOUNT_POINTS} ]
+- [ mkdir,"-p"${VM_MOUNT_POINTS} ]
 EOF
 	fi
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
