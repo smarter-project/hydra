@@ -360,7 +360,12 @@ EOF
 					echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
 					exit 1
 				fi
-				VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
+				if [ ! -z ${VM_MOUNT_POINTS} ]
+				then
+					VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
+				else
+					VM_MOUNT_POINTS=\"${MOUNT_VM}\"
+				fi
 				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
 EOF
