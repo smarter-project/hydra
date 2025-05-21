@@ -17,6 +17,8 @@ esac
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
+: ${ENABLE_VIRTIO_GPU:=1}
+: ${DEFAULT_VIRTIO_GPU_VRAM:=4}
 : ${ADDITIONAL_9P_MOUNTS:=""}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
@@ -613,6 +615,73 @@ function check_k3s_log_pods_dir() {
 	fi
 }
 
+function check_if_bios_needed() {
+	BIOS_OPTION=""
+	if [ ! -z "${KVM_BIOS}" ]
+	then
+		BIOS_OPTION="-bios ${KVM_BIOS}"
+	fi
+}
+
+function check_mount_filesystems() {
+	VIRTFS_9P_SECURITY_MODEL="passthrough"
+	if [ "${OS}" == "Darwin" ]
+	then
+		VIRTFS_9P_SECURITY_MODEL="mapped"
+	fi
+	VIRTFS_9P=""
+	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
+	then
+		VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0 
+	 -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host1' 
+	fi
+	if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
+	then
+
+		MOUNTS="${ADDITIONAL_9P_MOUNTS}"
+		MOUNT_ID=100
+		while [ ! -z "${MOUNTS}" ]
+		do
+			MOUNT_USED=$(echo "${MOUNTS}" | cut -d '$' -f 1)
+			MOUNTS=$(echo "${MOUNTS}" | cut -d '$' -f 2-)
+			if [ "${MOUNTS}" == "${MOUNT_USED}" ]
+			then
+				MOUNTS=""
+			fi
+			MOUNT_HOST=$(echo "${MOUNT_USED}" | cut -d '|' -f 1)
+			MOUNT_VM=$(echo "${MOUNT_USED}" | cut -d '|' -f 2)
+			if [ -z "${MOUNT_HOST}" -o -z "${MOUNT_VM}" ]
+			then
+				echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
+				exit 1
+			fi
+			if [ ! -z "${VIRTFS_9P}" ]
+			then
+				VIRTFS_9P=${VIRTFS_9P}' 
+	 '
+			fi
+			VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID} 
+			MOUNT_ID=$((${MOUNT_ID}+1))
+		done
+	fi
+}
+
+function check_gpu_options() {
+	VIRTIO_GPU=""
+	if [ ${ENABLE_VIRTIO_GPU} -gt 0 ]
+	then
+		VIRTIO_GPU='-device virtio-gpu-gl-pci,hostmem='${DEFAULT_VIRTIO_GPU_VRAM}'G,blob=true,venus=true'
+	fi
+}
+
+function check_if_vsock_device_enabledO() {
+	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
+	if [ "${OS}" == "Darwin" ]
+        then
+		VSOCK_DEVICE=""
+	fi
+}
+
 # ----- Main -------------------------------------------------------------------------------------
 
 check_requirements qemu-system-${ARCH_M} 
@@ -654,52 +723,11 @@ else
 	resize_kvm_image "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
 fi
 
-BIOS_OPTION=""
-if [ ! -z "${KVM_BIOS}" ]
-then
-	BIOS_OPTION="-bios ${KVM_BIOS}"
-fi
+check_if_bios_needed
 
-VIRTFS_9P_SECURITY_MODEL="passthrough"
-if [ "${OS}" == "Darwin" ]
-then
-	VIRTFS_9P_SECURITY_MODEL="mapped"
-fi
-VIRTFS_9P=""
-if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
-then
-	VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0 
- -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host1' 
-fi
-if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
-then
+check_mount_filesystems
 
-	MOUNTS="${ADDITIONAL_9P_MOUNTS}"
-	MOUNT_ID=100
-	while [ ! -z "${MOUNTS}" ]
-	do
-		MOUNT_USED=$(echo "${MOUNTS}" | cut -d '$' -f 1)
-		MOUNTS=$(echo "${MOUNTS}" | cut -d '$' -f 2-)
-		if [ "${MOUNTS}" == "${MOUNT_USED}" ]
-		then
-			MOUNTS=""
-		fi
-		MOUNT_HOST=$(echo "${MOUNT_USED}" | cut -d '|' -f 1)
-		MOUNT_VM=$(echo "${MOUNT_USED}" | cut -d '|' -f 2)
-		if [ -z "${MOUNT_HOST}" -o -z "${MOUNT_VM}" ]
-		then
-			echo "Incorrect specification of mount point in this '${MOUNT_USED}'"
-			exit 1
-		fi
-		if [ ! -z "${VIRTFS_9P}" ]
-		then
-			VIRTFS_9P=${VIRTFS_9P}' 
- '
-		fi
-		VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID} 
-		MOUNT_ID=$((${MOUNT_ID}+1))
-	done
-fi
+check_gpu_options
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
@@ -716,13 +744,10 @@ then
  -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b 
  -netdev user,id=net0'${REDIRECT_PORT}' 
  '${VIRTFS_9P}' 
+ '${VIRTIO_GPU}'
  -nographic'
 else
-	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
-	if [ "${OS}" == "Darwin" ]
-        then
-		VSOCK_DEVICE=""
-	fi
+	check_if_vsock_device_enabled
 
 	CMD_LINE='qemu-system-'${ARCH_M}' 
  -m '${KVM_MEMORY}'g 
@@ -739,6 +764,7 @@ else
  -drive "if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" 
  -device virtio-blk-device,id=drv0,drive=drive1 
  '${VIRTFS_9P}' 
+ '${VIRTIO_GPU}'
  -serial mon:stdio 
  -nographic'
 fi
