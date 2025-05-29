@@ -17,7 +17,7 @@ esac
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
-: ${ENABLE_VIRTIO_GPU:=1}
+: ${ENABLE_VIRTIO_GPU:=0}
 : ${DEFAULT_VIRTIO_GPU_VRAM:=4}
 : ${ADDITIONAL_9P_MOUNTS:=""}
 : ${COPY_IMAGE_BACKUP:=0}
@@ -443,10 +443,16 @@ write_files:
               CriuWorkPath = ""
               IoGid = 0
   path: /etc/containerd/config.toml.new
+- content: |
+    Hydra VM installed and configured. SSH and csi-grpc-proxy are running.
+    You can login using the user/password provided with on this terminal 
+    or using the sshd with the key provided.
+  path: /etc/issue.hydra
 runcmd:
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
+- [ bash,"-c","cat /etc/issue.hydra >> /etc/issue"]
 EOF
 	if [ ! -z "${VM_MOUNT_POINTS}" ]
 	then

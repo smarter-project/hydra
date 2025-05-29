@@ -129,7 +129,7 @@ THe following variables configures the script:
 | `VM_PASSWORD` | Cleartext password to be used | vm-user |
 | `VM_PASSWORD_ENCRYPTED` | Encrypted password to be used, overwrites the cleartext password | | 
 | `VM_HOSTNAME` | Hostname | vm-host |
-| `VM_SSH_AUTHORIZED_KEY` | ssh public key to add to authorized_key for the user VM_USERNAME | |
+| `VM_SSH_AUTHORIZED_KEY` | ssh public key to add to authorized\_key for the user VM_USERNAME | |
 | `RUN_BARE_KERNEL` | if > 0 then Use kernel and initrd instead of cloud image | 0 | 
 | `DEFAULT_KVM_PORTS_REDIRECT` | format is `<external>:<internal>[;<external>:<internal>]` | "" |
 | `DEFAULT_RIMD_ARTIFACT_URL` | where to download the artifacts (kernel + initrd) | https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts |
@@ -153,6 +153,13 @@ git clone https://github.com/smarter-project/hydra
 ### Isolated-vm
 
 #### TL;DR
+
+The terminal will output VM console messages and the last message should be a login prompt. When running the script directly this will be printed in the current terminal that the script is running. Use `VM_USERNAME`, `VM_PASSWORD` to login. Ssh and csi-grpc-proxy interfaces are available through the network.
+
+Two options to exit the VM after it has been started.
+
++ stop the hypervisor by typing "control-a" and "c" and at the hypervisor prompt, type "quit"
++ login to the VM using the `VM_USERNAME`, `VM_PASSWORD` and execute "`sudo shutdown -h 0"
 
 Run the script start-vm.sh to create the VM using debian cloud image
 ```
