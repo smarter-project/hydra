@@ -298,7 +298,7 @@ function resize_kvm_image() {
 	fi
 	KVM_IMG_SIZE=$((${DEFAULT_KVM_DISK_SIZE}+0))
 	CURR_IMG_SIZE=$(echo "${KVM_IMG_RES}" | grep '^virtual size' | sed -e "s/^.*(//" -e "s/ .*//")
-	CURR_IMG_SIZE=$((${CURR_IMG_SIZE}/1024/1024/1024))
+	CURR_IMG_SIZE=$(((${CURR_IMG_SIZE}+1023)/1073741824)) # 1024^3
 	if [ ${CURR_IMG_SIZE} -lt ${KVM_IMG_SIZE} ]
 	then
 		echo "Resizing image to ${KVM_IMG_SIZE}g"
