@@ -24,12 +24,13 @@ esac
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
 : ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
-: ${VM_USERNAME:="vm-user"}
-: ${VM_PASSWORD:="vm-user"}
+: ${VM_USERNAME:="hailhydra"}
+: ${VM_PASSWORD:="hailhydra"}
 : ${VM_SALT:="123456"}
 : ${VM_PASSWORD_ENCRYPTED:=""}
-: ${VM_HOSTNAME:="vm-host"}
+: ${VM_HOSTNAME:="hydravm"}
 : ${VM_SSH_AUTHORIZED_KEY:=""}
+: ${VM_SSH_KEY_FILENAME:=""}
 : ${KERNEL_VERSION:="linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}"}
 : ${DEFAULT_DIR_IMAGE:=$(pwd)/image}
 : ${DEFAULT_DIR_K3S_VAR_DARWIN:=$(pwd)/k3s-var}
@@ -298,7 +299,7 @@ function resize_kvm_image() {
 	fi
 	KVM_IMG_SIZE=$((${DEFAULT_KVM_DISK_SIZE}+0))
 	CURR_IMG_SIZE=$(echo "${KVM_IMG_RES}" | grep '^virtual size' | sed -e "s/^.*(//" -e "s/ .*//")
-	CURR_IMG_SIZE=$(((${CURR_IMG_SIZE}+1023)/1073741824)) # 1024^3
+	CURR_IMG_SIZE=$(((${CURR_IMG_SIZE})/1073741824)) # 1024^3
 	if [ ${CURR_IMG_SIZE} -lt ${KVM_IMG_SIZE} ]
 	then
 		echo "Resizing image to ${KVM_IMG_SIZE}g"
@@ -331,16 +332,16 @@ EOF
 EOF
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 -o ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
-		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-mounts:
-EOF
+#		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+#mounts:
+#EOF
 		VM_MOUNT_POINTS=""
 		if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
-			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-- [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
-- [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
-EOF
+#			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+#- [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L" ]
+#- [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L" ]
+#EOF
 			VM_MOUNT_POINTS=',"/var/lib/kubelet","/var/log/pods"'
 		fi
 		if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
@@ -363,9 +364,9 @@ EOF
 					exit 1
 				fi
 				VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
-				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-- [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
-EOF
+#				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+#- [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
+#EOF
 				MOUNT_ID=$((${MOUNT_ID}+1))
 			done
 		fi
@@ -375,7 +376,7 @@ EOF
 users:
 - default
 - name: ${VM_USERNAME}
-  primary_group: ${VM_USERNAME}r
+  primary_group: ${VM_USERNAME}
   groups: users, admin
   sudo: ALL=(ALL) NOPASSWD:ALL
   lock_passwd: false
@@ -384,8 +385,7 @@ EOF
 	if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
 	then 
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-  ssh_authorized_keys:
-      - ${VM_SSH_AUTHORIZED_KEY}
+  ssh_authorized_keys: ['${VM_SSH_AUTHORIZED_KEY}']
 EOF
 	fi
 	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
@@ -445,8 +445,8 @@ write_files:
   path: /etc/containerd/config.toml.new
 - content: |
     Hydra VM installed and configured. SSH and csi-grpc-proxy are running.
-    You can login using the user/password provided with on this terminal 
-    or using the sshd with the key provided.
+    You can login on this terminal with username/password provided 
+    or using ssh with key provided.
   path: /etc/issue.hydra
 runcmd:
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
@@ -463,8 +463,8 @@ EOF
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-- [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
-- [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
+- [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ mount, "host0"]
 - [ mount, "host1"]
 EOF
@@ -490,7 +490,7 @@ EOF
 			fi
 			VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
 			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} 9p trans=virtio,version=9p2000.L 0 2' >> /etc/fstab" ]
+- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ mount, "host${MOUNT_ID}"]
 EOF
 			MOUNT_ID=$((${MOUNT_ID}+1))
@@ -541,8 +541,10 @@ EOF
 		if [ -z "${CONFIG_MODIFIED}" ]
 		then
 			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" || exit $?
+			echo "Configuration is the same as it was before so reusing the image"
 			return
 		fi
+		echo "Configuration has changed so restart the image"
 		rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" || exit $?
 	fi
 		
@@ -558,9 +560,13 @@ EOF
 	fi
 	case ${OS} in
 		Darwin)
+			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+			echo "Cloud-init data generated (iso using hdiutil)"
 			hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
 			;;
 		*)
+			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+			echo "Cloud-init data generated (iso using mkisofs)"
 			mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -input-charset utf-8 -volid cidata -joliet -rock "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
 			;;
 	esac
@@ -589,6 +595,32 @@ function check_ports_redirection() {
 		[[ "${REDIRECT_HOST}" =~ ^[0-9][0-9]*$ && "${REDIRECT_VM}" =~ ^[0-9][0-9]*$ ]] || continue
 		REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${REDIRECT_HOST}-:${REDIRECT_VM}"
 	done
+}
+
+function check_ssh_authorized_key() {
+	if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
+	then
+		return
+	fi
+	if [ -z "${VM_SSH_KEY_FILENAME}" ]
+	then
+		case ${OS} in
+			Darwin)
+				VM_SSH_KEY_FILENAME=$(ls ~/.ssh/id*.pub 2> /dev/null| head -n 1)
+				;;
+			GNU/Linux)
+				if [ "x${USER}" == "xroot" -o "$(id -u)" -eq 0 ]
+				then
+					return
+				fi
+				VM_SSH_KEY_FILENAME=$(ls ~/.ssh/id*.pub 2> /dev/null| head -n 1)
+				;;
+			*)
+				return
+				;;
+		esac
+	fi
+	VM_SSH_AUTHORIZED_KEY=$(cat "${VM_SSH_KEY_FILENAME}")
 }
 
 function check_k3s_log_pods_dir() {
@@ -708,6 +740,8 @@ check_ports_redirection
 check_kvm_kvm_hvf
 
 check_image_directory
+
+check_ssh_authorized_key
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then

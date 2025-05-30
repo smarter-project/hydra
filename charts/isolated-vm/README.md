@@ -32,7 +32,7 @@ helm delete isolated-vm --namespace <namespace to use>
 
 | Name | Description | Value |
 | ---- | ----------- | ----- |
-| configuration.sshkey | Public ssh key to enable access to the VM (user vm-user) | |
+| configuration.sshkey | Public ssh key to enable access to the VM (user hailhydra) | |
 | configuration.local_node_image_dir | /srv/shared-container-volumes/image | |
 | configuration.debug | | |
 | configuration.dry_run_only | | |

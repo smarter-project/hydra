@@ -34,4 +34,4 @@ helm delete hydra --namespace <namespace to use>
 
 | Name | Description | Value |
 | ---- | ----------- | ----- |
-| configuration.sshkey | Public ssh key to enable access to the VM (user vm-user) | |
+| configuration.sshkey | Public ssh key to enable access to the VM (user hailhydra) | |

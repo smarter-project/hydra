@@ -124,9 +124,9 @@ THe following variables configures the script:
 | `KVM_MEMORY` | DRAM to allocate | `DEFAULT_KVM_<OS>_MEMORY` |
 | `KVM_BIOS` | BIOS to use | `DEFAULT_KVM_<OS>_BIOS` |
 | `KVM_MACHINE_TYPE` | KVM machine type | use "virt" or ""pc" |
-| `VM_USERNAME` | Usename to created at VM | vm-user |
+| `VM_USERNAME` | Usename to created at VM | hailhydra |
 | `VM_SALT` | Salt to be used when creating the encrypted password | 123456 |
-| `VM_PASSWORD` | Cleartext password to be used | vm-user |
+| `VM_PASSWORD` | Cleartext password to be used | hailhydra |
 | `VM_PASSWORD_ENCRYPTED` | Encrypted password to be used, overwrites the cleartext password | | 
 | `VM_HOSTNAME` | Hostname | vm-host |
 | `VM_SSH_AUTHORIZED_KEY` | ssh public key to add to authorized\_key for the user VM_USERNAME | |
