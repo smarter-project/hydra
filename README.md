@@ -179,7 +179,7 @@ RUN_BARE_KERNEL=1 RIMD_ARTIFACT_URL_TOKEN=<access token> ./start-vm.sh
 
 #### Testing
 
-Use csi-grpcs-proxy running on the host to convert from a tcp port to an unix socket 
+Use csi-grpc-proxy running on the host to convert from a tcp port to an unix socket 
 ```
 wget https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-darwin-arm64
 chmod u+x csi-grpc-proxy-v0.5.6-darwin-arm64
