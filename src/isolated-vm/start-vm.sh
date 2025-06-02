@@ -5,18 +5,22 @@ OS=$(uname -o)
 ARCH_M=$(uname -m)
 case ${ARCH_M} in
 	x86_64)
+		ARCH_GEN=amd64
 		ARCH=amd64;;
 	arm64|aarch64)
 		ARCH=arm64
+		ARCH_GEN=arm
 		ARCH_M=aarch64;;
 	*)
-		ARCH=${ARCH_M};;
+		ARCH=${ARCH_M}
+		ARCH_GEN=${ARCH_M};;
 esac
 : ${DEBUG:=0}
 [ ${DEBUG} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
+: ${DISABLE_CONTAINERD_CSI_PROXY:=0}
 : ${ENABLE_VIRTIO_GPU:=0}
 : ${DEFAULT_VIRTIO_GPU_VRAM:=4}
 : ${ADDITIONAL_9P_MOUNTS:=""}
@@ -37,7 +41,7 @@ esac
 : ${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT:=$(pwd)/k3s-var}
 : ${DEFAULT_DIR_K3S_VAR_LINUX_ROOT:=""}
 : ${DEFAULT_DIR_K3S_VAR_OTHER:=$(pwd)/k3s-var}
-: ${DEFAULT_SOURCE_IMAGE:="https://cloud.debian.org/images/cloud/bookworm/20250316-2053/"}
+: ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/bookworm/20250316-2053/"}
 : ${DEFAULT_KVM_DARWIN_CPU:=2}
 : ${DEFAULT_KVM_DARWIN_MEMORY:=2}
 : ${DEFAULT_KVM_LINUX_CPU:=2}
@@ -45,11 +49,18 @@ esac
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
 : ${DEFAULT_KVM_UNKNOWN_MEMORY:=2}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
-[ ${OS} == "Darwin" ] && : ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
+[ ${OS} == "Darwin" ] && {
+	: ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
+	: ${DEFAULT_KVM_DARWIN_BIOS_VAR:=""}
+#	: ${DEFAULT_KVM_DARWIN_BIOS_VAR:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_GEN}-code.fd 2>/dev/null | head -n 1)}
+}
 : ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
+: ${DEFAULT_KVM_LINUX_v9_BIOS_VAR:=""}
 : ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
+: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/qemu-efi-aarch64/QEMU_EFI_vars.fd"}
 #: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
 : ${DEFAULT_KVM_UNKNWON_BIOS:=""}
+: ${DEFAULT_KVM_UNKNWON_BIOS_VAR:=""}
 # If these values are empty, the ports will not be redirected.
 : ${DEFAULT_KVM_HOST_SSHD_PORT:="5555"}
 : ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
@@ -152,13 +163,13 @@ function check_image_exists() {
 		echo "Image ${DEFAULT_IMAGE} exists on disk, reusing"
 		return
 	fi
-	if [ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ] 
+	if [ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ]
 	then
-		echo "Using backup image from ${DEFAULT_SOURCE_IMAGE}"
+		echo "Using backup image from ${DEFAULT_IMAGE_SOURCE_URL}"
 		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
 	else
-		echo "Download image from ${DEFAULT_SOURCE_IMAGE}"
-		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_SOURCE_IMAGE}/${DEFAULT_IMAGE}" 
+		echo "Download image from ${DEFAULT_IMAGE_SOURCE_URL}"
+		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE}"
 		if [ $? -ne 0 ]
 		then
 			echo "Download unsucceful, bailing out"
@@ -249,8 +260,10 @@ function check_kvm_memory_cpu() {
 		if [ ${KVM_VERSION_MAJOR} -ge 9 ]
 		then
 			: ${KVM_BIOS:=${DEFAULT_KVM_LINUX_v9_BIOS}}
+			: ${KVM_BIOS_VAR:=${DEFAULT_KVM_LINUX_v9_BIOS_VAR}}
 		else
 			: ${KVM_BIOS:=${DEFAULT_KVM_LINUX_v7_BIOS}}
+			: ${KVM_BIOS_VAR:=${DEFAULT_KVM_LINUX_v7_BIOS_VAR}}
 		fi
 				
 		case ${ARCH_M} in
@@ -268,6 +281,7 @@ function check_kvm_memory_cpu() {
 		: ${KVM_CPU:=${DEFAULT_KVM_DARWIN_CPU}}
 		: ${KVM_MEMORY:=${DEFAULT_KVM_DARWIN_MEMORY}}
 		: ${KVM_BIOS:=${DEFAULT_KVM_DARWIN_BIOS}}
+		: ${KVM_BIOS_VAR:=${DEFAULT_KVM_DARWIN_BIOS_VAR}}
 		: ${KVM_MACHINE_TYPE:="virt"}
 		echo "Using Darwin QEMU machine ${KVM_MACHINE_TYPE} with ${KVM_CPU} CPUs and ${KVM_MEMORY}G"
 		return
@@ -275,6 +289,7 @@ function check_kvm_memory_cpu() {
 		: ${KVM_CPU:=${DEFAULT_KVM_UNKNOWN_CPU}}
 		: ${KVM_MEMORY:=${DEFAULT_KVM_UNKNOWN_MEMORY}}
 		: ${KVM_BIOS:=${DEFAULT_KVM_UNKNOWN_BIOS}}
+		: ${KVM_BIOS_VAR:=${DEFAULT_KVM_UNKNOWN_BIOS_VAR}}
 		case ${ARCH_M} in
 			x86_64|amd64)
 				: ${KVM_MACHINE_TYPE:="pc"};;
@@ -383,7 +398,7 @@ users:
   passwd: ${VM_PASSWORD_ENCRYPTED}
 EOF
 	if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
-	then 
+	then
 		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
   ssh_authorized_keys: ['${VM_SSH_AUTHORIZED_KEY}']
 EOF
@@ -395,10 +410,16 @@ package_reboot_if_required: true
 package_update: true
 package_upgrade: true
 packages:
+EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - containerd
 - 9mount
+EOF
+	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - ${KERNEL_VERSION}
 write_files:
+EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - content: |
     [Unit]
     Description=TCP proxy for containerd
@@ -443,15 +464,21 @@ write_files:
               CriuWorkPath = ""
               IoGid = 0
   path: /etc/containerd/config.toml.new
+EOF
+	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - content: |
     Hydra VM installed and configured. SSH and csi-grpc-proxy are running.
-    You can login on this terminal with username/password provided 
+    You can login on this terminal with username/password provided
     or using ssh with key provided.
   path: /etc/issue.hydra
 runcmd:
+EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
+EOF
+	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ bash,"-c","cat /etc/issue.hydra >> /etc/issue"]
 EOF
 	if [ ! -z "${VM_MOUNT_POINTS}" ]
@@ -496,7 +523,7 @@ EOF
 			MOUNT_ID=$((${MOUNT_ID}+1))
 		done
 	fi
-	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ systemctl, daemon-reload ]
 - [ systemctl, restart, containerd ]
 - [ systemctl, enable, csi-grpc-proxy.service ]
@@ -536,7 +563,7 @@ network:
         via: 10.0.2.2
 EOF
 	if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" ]
-	then 
+	then
 		CONFIG_MODIFIED=$(diff "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" "${DEFAULT_DIR_IMAGE}/cloud-init.dir")
 		if [ -z "${CONFIG_MODIFIED}" ]
 		then
@@ -587,7 +614,7 @@ function check_ports_redirection() {
 		echo "Incorrect format for DEFAULT_KVM_PORTS_REDIRECT. It should be either empty, <Port externali>:<Port internal> or sequence of redirects separated by ;."
 		exit -1
 	fi
-	REDIRECTS=${DEFAULT_KVM_PORTS_REDIRECT//;/ } 
+	REDIRECTS=${DEFAULT_KVM_PORTS_REDIRECT//;/ }
 	for REDIRECT in ${REDIRECTS}
 	do
 		REDIRECT_HOST=$(echo "${REDIRECT}" | cut -d ":" -f 1)
@@ -655,10 +682,28 @@ function check_k3s_log_pods_dir() {
 
 function check_if_bios_needed() {
 	BIOS_OPTION=""
-	if [ ! -z "${KVM_BIOS}" ]
+	if [ -z "${KVM_BIOS}" ]
 	then
-		BIOS_OPTION="-bios ${KVM_BIOS}"
+		return
 	fi
+
+	if [ ! -e "${KVM_BIOS}" ]
+	then
+		echo "Bios requested \"${KVM_BIOS}\" not found"
+		exit 1
+	fi
+	BIOS_OPTION="-drive if=pflash,format=raw,readonly,file=${KVM_BIOS}"
+	if [ -z "${KVM_BIOS_VAR}" ]
+	then
+		return
+	fi
+	if [ ! -e "${KVM_BIOS_VAR}" ]
+	then
+		echo "Bios requested \"${KVM_BIOS_VAR}\" not found"
+		exit 1
+	fi
+	BIOS_OPTION="${BIOS_OPTION}
+ -drive if=pflash,format=raw,file=${KVM_BIOS_VAR}"
 }
 
 function check_mount_filesystems() {
@@ -670,8 +715,8 @@ function check_mount_filesystems() {
 	VIRTFS_9P=""
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 	then
-		VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0 
-	 -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host1' 
+		VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0
+ -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host1'
 	fi
 	if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
@@ -695,10 +740,10 @@ function check_mount_filesystems() {
 			fi
 			if [ ! -z "${VIRTFS_9P}" ]
 			then
-				VIRTFS_9P=${VIRTFS_9P}' 
+				VIRTFS_9P=${VIRTFS_9P}'
 	 '
 			fi
-			VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID} 
+			VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID}
 			MOUNT_ID=$((${MOUNT_ID}+1))
 		done
 	fi
@@ -722,7 +767,7 @@ function check_if_vsock_device_enabledO() {
 
 # ----- Main -------------------------------------------------------------------------------------
 
-check_requirements qemu-system-${ARCH_M} 
+check_requirements qemu-system-${ARCH_M}
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
 	if [ ${OS} == "Darwin" ]
@@ -771,41 +816,41 @@ check_gpu_options
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
-	CMD_LINE='qemu-system-'${ARCH_M}' 
- -m '${KVM_MEMORY}'g 
- -smp '${KVM_CPU}' 
- -M '${KVM_MACHINE_TYPE}' 
- '${HW_ACCEL}' 
- '${BIOS_OPTION}' 
- -cpu '${KVM_CPU_TYPE}' 
- -drive if=none,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',id=hd0 
- -drive file='${DEFAULT_DIR_IMAGE}/cloud-init.iso',index=1,media=cdrom 
- -device virtio-blk-pci,drive=hd0 
- -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b 
- -netdev user,id=net0'${REDIRECT_PORT}' 
- '${VIRTFS_9P}' 
+	CMD_LINE='qemu-system-'${ARCH_M}'
+ -m '${KVM_MEMORY}'g
+ -smp '${KVM_CPU}'
+ -M '${KVM_MACHINE_TYPE}'
+ '${HW_ACCEL}'
+ '${BIOS_OPTION}'
+ -cpu '${KVM_CPU_TYPE}'
+ -drive if=none,format=qcow2,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',id=hd0
+ -drive file='${DEFAULT_DIR_IMAGE}/cloud-init.iso',index=1,media=cdrom
+ -device virtio-blk-pci,drive=hd0
+ -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b
+ -netdev user,id=net0'${REDIRECT_PORT}'
+ '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
  -nographic'
 else
 	check_if_vsock_device_enabled
 
-	CMD_LINE='qemu-system-'${ARCH_M}' 
- -m '${KVM_MEMORY}'g 
- -M '${KVM_MACHINE_TYPE}' 
- -smp '${KVM_CPU}' 
- '${HW_ACCEL}' 
- -cpu '${KVM_CPU_TYPE}' 
- -kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'" 
- -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on" 
- -netdev user,id=n1'${REDIRECT_PORT}' 
- -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca 
- '${VSOCK_DEVICE}' 
- -initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'" 
- -drive "if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'" 
- -device virtio-blk-device,id=drv0,drive=drive1 
- '${VIRTFS_9P}' 
+	CMD_LINE='qemu-system-'${ARCH_M}'
+ -m '${KVM_MEMORY}'g
+ -M '${KVM_MACHINE_TYPE}'
+ -smp '${KVM_CPU}'
+ '${HW_ACCEL}'
+ -cpu '${KVM_CPU_TYPE}'
+ -kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'"
+ -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on"
+ -netdev user,id=n1'${REDIRECT_PORT}'
+ -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca
+ '${VSOCK_DEVICE}'
+ -initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'"
+ -drive "if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'"
+ -device virtio-blk-device,id=drv0,drive=drive1
+ '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
- -serial mon:stdio 
+ -serial mon:stdio
  -nographic'
 fi
 

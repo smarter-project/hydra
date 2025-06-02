@@ -103,7 +103,7 @@ THe following variables configures the script:
 | `DEFAULT_DIR_K3S_VAR_LINUX_ROOT` | Where to point the 9p mounts if running on linux machine as root (or inside a container ) | |
 | `DEFAULT_DIR_K3S_VAR_OTHER` | Where to point the 9p mounts if running on other OS machine | `$(pwd)/k3s-var` |
 | `DEFAULT_IMAGE` | QCOW image to use as base | `debian-12-genericcloud-${ARCH}-20250316-2053.qcow2` |
-| `DEFAULT_SOURCE_IMAGE` | where to download QCOW image | `https://cloud.debian.org/images/cloud/bookworm/20250316-2053/` |
+| `DEFAULT_IMAGE_SOURCE_URL` | where to download QCOW image | `https://cloud.debian.org/images/cloud/bookworm/20250316-2053/` |
 | `DEFAULT_DIR_IMAGE` | Directory to use to store image and artifacts | `$(pwd)/image` |
 | `DEFAULT_KVM_DARWIN_CPU` | # CPUS allocated to the VM when running in MacOS | 2 |
 | `DEFAULT_KVM_DARWIN_MEMORY` | DRAM allocated to the VM to the VM when running in MacOS | 2 |
