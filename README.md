@@ -23,6 +23,9 @@ The scripts run under MacOS, Linux, docker and k3s.
     - KVM
     - wget
     
+    - for testing 
+    - cri-tools (brew install cri-tools)
+    
 ## Docker
     - docker installed on the host
 
@@ -173,6 +176,20 @@ Run the script start-vm.sh to create the VM using the kernel/initrd instead of c
 ```
 cd hydra/src/isolated-vm
 RUN_BARE_KERNEL=1 RIMD_ARTIFACT_URL_TOKEN=<access token> ./start-vm.sh
+
+#### Testing
+
+Use csi-grpcs-proxy running on the host to convert from a tcp port to an unix socket 
+```
+wget https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-darwin-arm64
+chmod u+x csi-grpc-proxy-v0.5.6-darwin-arm64
+BIND_TO=unix:///tmp/socket-csi PROXY_TO=tcp://127.0.0.1:35000 ./csi-grpc-proxy-v0.5.6-darwin-arm64 &
+```
+
+Now you can run crictl to send commands to containerd running on the isolated enviroment.  Start/stop/list containers, download/remove images, etc.
+This webpage has examples of how to use crictl `https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/`
+```
+crictl --runtime-endpoint unix:///tmp/socket-csi ps
 ```
 
 ### Crismux (needed if using kubernetes)
