@@ -27,7 +27,7 @@ esac
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
-: ${DEFAULT_KERNEL_VERSION:="6.12.12+bpo"}
+: ${DEFAULT_KERNEL_VERSION:="6.12.22+bpo"}
 : ${VM_USERNAME:="hailhydra"}
 : ${VM_PASSWORD:="hailhydra"}
 : ${VM_SALT:="123456"}
@@ -43,11 +43,11 @@ esac
 : ${DEFAULT_DIR_K3S_VAR_OTHER:=$(pwd)/k3s-var}
 : ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/bookworm/20250316-2053/"}
 : ${DEFAULT_KVM_DARWIN_CPU:=2}
-: ${DEFAULT_KVM_DARWIN_MEMORY:=2}
+: ${DEFAULT_KVM_DARWIN_MEMORY:=8}
 : ${DEFAULT_KVM_LINUX_CPU:=2}
-: ${DEFAULT_KVM_LINUX_MEMORY:=2}
+: ${DEFAULT_KVM_LINUX_MEMORY:=8}
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
-: ${DEFAULT_KVM_UNKNOWN_MEMORY:=2}
+: ${DEFAULT_KVM_UNKNOWN_MEMORY:=8}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
 [ ${OS} == "Darwin" ] && {
 	: ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
@@ -158,6 +158,20 @@ function check_image_directory() {
 }
 
 function check_image_exists() {
+	DEFAULT_IMAGE_COMPRESSED="${DEFAULT_IMAGE}"
+	if [[ ${DEFAULT_IMAGE} =~ ^.*\.zip$ ]]
+	then
+		DEFAULT_IMAGE=$(echo "${DEFAULT_IMAGE}" | sed -e "s/[.]zip$//")
+	elif [[ ${DEFAULT_IMAGE} =~ ^.*\.gz$ ]]
+	then
+		DEFAULT_IMAGE=$(echo "${DEFAULT_IMAGE}" | sed -e "s/[.]gz$//")
+	elif [[ ${DEFAULT_IMAGE} =~ ^.*\.xz$ ]]
+	then
+		DEFAULT_IMAGE=$(echo "${DEFAULT_IMAGE}" | sed -e "s/[.]xz$//")
+	elif [[ ${DEFAULT_IMAGE} =~ ^.*\.bz2$ ]]
+	then
+		DEFAULT_IMAGE=$(echo "${DEFAULT_IMAGE}" | sed -e "s/[.]xz$//")
+	fi
 	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ]
 	then
 		echo "Image ${DEFAULT_IMAGE} exists on disk, reusing"
@@ -168,12 +182,36 @@ function check_image_exists() {
 		echo "Using backup image from ${DEFAULT_IMAGE_SOURCE_URL}"
 		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
 	else
-		echo "Download image from ${DEFAULT_IMAGE_SOURCE_URL}"
-		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE}"
-		if [ $? -ne 0 ]
+		echo "Image ${DEFAULT_IMAGE} does not exist on disk, checking if downloading is needed"
+		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" ]
 		then
-			echo "Download unsucceful, bailing out"
-			exit 1
+			echo "Downloading image ${DEFAULT_IMAGE_COMPRESSED} from ${DEFAULT_IMAGE_SOURCE_URL}"
+			wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE_COMPRESSED}"
+
+			if [ $? -ne 0 ]
+			then
+				echo "Download unsucceful, bailing out"
+				exit 1
+			fi
+		else
+			echo "Using existing image ${DEFAULT_IMAGE_COMPRESSED}"
+		fi
+		if [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.zip$ ]]
+		then
+			echo "Image is compressed with zip, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+			unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+		elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.gz$ ]]
+		then
+			echo "Image is compressed with gzip, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+			gunzip -d "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+		elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.bz2$ ]]
+		then
+			echo "Image is compressed with bzip2, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+			bunzip2 -d "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+		elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.xz$ ]]
+		then
+			echo "Image is compressed with xz, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+			xz --decompress "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
 		fi
 		[ ${COPY_IMAGE_BACKUP} -gt 0 ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp
 	fi
@@ -203,7 +241,7 @@ function check_kernel_image() {
 		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "image/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
 		if [ $? -ne 0 ]
 		then
-			echo "Download unsuccessful error ${RES}, bailing out"
+			echo "Download unsuccessful, bailing out"
 			exit 1
 		fi
 	fi
@@ -561,6 +599,14 @@ network:
       routes:
       - to: 0.0.0.0/0
         via: 10.0.2.2
+    ens3:
+      dhcp4: no
+      addresses: [10.0.2.15/24]
+      nameservers:
+           addresses: [10.0.2.3]
+      routes:
+      - to: 0.0.0.0/0
+        via: 10.0.2.2
 EOF
 	if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" ]
 	then
@@ -595,8 +641,8 @@ EOF
 			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
 			echo "Cloud-init data generated (iso using mkisofs)"
 			mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -input-charset utf-8 -volid cidata -joliet -rock "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-			;;
-	esac
+		;;
+        esac
 }
 
 function check_ports_redirection() {
@@ -751,9 +797,15 @@ function check_mount_filesystems() {
 
 function check_gpu_options() {
 	VIRTIO_GPU=""
+	KVM_NOGRAPHIC="-nographic"
 	if [ ${ENABLE_VIRTIO_GPU} -gt 0 ]
 	then
-		VIRTIO_GPU='-device virtio-gpu-gl-pci,hostmem='${DEFAULT_VIRTIO_GPU_VRAM}'G,blob=true,venus=true'
+		VIRTIO_GPU='-device virtio-gpu-gl-pci,hostmem='${DEFAULT_VIRTIO_GPU_VRAM}'G,blob=true,venus=true
+ -display gtk,gl=on,show-cursor=on
+ -object memory-backend-memfd,id=mem1,size='${KVM_MEMORY}'G
+ -machine memory-backend=mem1'
+		KVM_NOGRAPHIC="-vga none
+ -serial mon:stdio"
 	fi
 }
 
@@ -830,7 +882,7 @@ then
  -netdev user,id=net0'${REDIRECT_PORT}'
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
- -nographic'
+ '${KVM_NOGRAPHIC}
 else
 	check_if_vsock_device_enabled
 
@@ -851,7 +903,7 @@ else
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
  -serial mon:stdio
- -nographic'
+ '${KVM_NOGRAPHIC}
 fi
 
 echo "${CMD_LINE}"
