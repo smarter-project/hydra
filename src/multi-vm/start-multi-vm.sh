@@ -13,54 +13,107 @@ if ! command -v yq &> /dev/null; then
     exit 1
 fi
 
+# Detect OS (matching start-vm.sh's detection)
+OS=$(uname -o)
+if [ "${OS}" == "Darwin" ]; then
+    OS_TYPE="darwin"
+elif [ "${OS}" == "GNU/Linux" ]; then
+    OS_TYPE="linux"
+else
+    echo "Unsupported OS: ${OS}"
+    exit 1
+fi
+
 # Default configuration file
 CONFIG_FILE="vm-config.yaml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_DIR_IMAGE="${SCRIPT_DIR}/../isolated-vm/image"
 
-# Function to check if a network exists
-function check_network_exists() {
-    local network_name=$1
-    if ! virsh net-info "${network_name}" &>/dev/null; then
-        return 1
-    fi
-    return 0
-}
-
-# Function to create a network
-function create_network() {
-    local network_name=$1
+# Function to create a bridge network (Linux)
+function create_bridge_network_linux() {
+    local bridge_name=$1
     local subnet=$2
     local gateway=$3
-    local dns=$4
 
-    # Create network XML
-    cat > /tmp/network.xml << EOF
-<network>
-  <name>${network_name}</name>
-  <forward mode='nat'/>
-  <bridge name='${network_name}' stp='on' delay='0'/>
-  <ip address='${gateway}' netmask='255.255.255.0'>
-    <dhcp>
-      <range start='${subnet%.*}.2' end='${subnet%.*}.254'/>
-      <host mac='52:54:00:00:00:01' name='hydravm1' ip='192.168.100.10'/>
-      <host mac='52:54:00:00:00:02' name='hydravm2' ip='192.168.100.11'/>
-    </dhcp>
-  </ip>
-</network>
-EOF
+    # Check if bridge already exists
+    if ip link show "${bridge_name}" &>/dev/null; then
+        echo "Bridge ${bridge_name} already exists"
+        return 0
+    fi
 
-    # Define and start the network
-    virsh net-define /tmp/network.xml
-    virsh net-start "${network_name}"
-    virsh net-autostart "${network_name}"
+    # Create bridge
+    echo "Creating bridge ${bridge_name}..."
+    sudo ip link add "${bridge_name}" type bridge
+    sudo ip addr add "${gateway}/24" dev "${bridge_name}"
+    sudo ip link set "${bridge_name}" up
+
+    # Enable IP forwarding
+    echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward > /dev/null
+
+    # Set up NAT
+    sudo iptables -t nat -A POSTROUTING -s "${subnet}/24" -j MASQUERADE
+    sudo iptables -A FORWARD -i "${bridge_name}" -j ACCEPT
+    sudo iptables -A FORWARD -o "${bridge_name}" -j ACCEPT
+}
+
+# Function to create a bridge network (macOS)
+function create_bridge_network_darwin() {
+    local bridge_name=$1
+    local subnet=$2
+    local gateway=$3
+
+    # Check if bridge already exists
+    if ifconfig "${bridge_name}" &>/dev/null; then
+        echo "Bridge ${bridge_name} already exists"
+        return 0
+    fi
+
+    # Create bridge
+    echo "Creating bridge ${bridge_name}..."
+    sudo ifconfig "${bridge_name}" create
+    sudo ifconfig "${bridge_name}" inet "${gateway}" netmask 255.255.255.0 up
+
+    # Enable IP forwarding
+    sudo sysctl -w net.inet.ip.forwarding=1
+
+    # Set up NAT using pfctl
+    echo "nat on en0 from ${subnet}/24 to any -> (en0)" | sudo pfctl -f -
+    sudo pfctl -e
+}
+
+# Function to cleanup bridge network (Linux)
+function cleanup_bridge_network_linux() {
+    local bridge_name=$1
+    local subnet=$2
+    
+    # Remove iptables rules
+    sudo iptables -t nat -D POSTROUTING -s "${subnet}/24" -j MASQUERADE
+    sudo iptables -D FORWARD -i "${bridge_name}" -j ACCEPT
+    sudo iptables -D FORWARD -o "${bridge_name}" -j ACCEPT
+
+    # Remove bridge
+    sudo ip link set "${bridge_name}" down
+    sudo ip link delete "${bridge_name}" type bridge
+}
+
+# Function to cleanup bridge network (macOS)
+function cleanup_bridge_network_darwin() {
+    local bridge_name=$1
+    
+    # Disable NAT
+    sudo pfctl -d
+    echo "" | sudo pfctl -f -
+    
+    # Remove bridge
+    sudo ifconfig "${bridge_name}" down
+    sudo ifconfig "${bridge_name}" delet
 }
 
 # Function to start a single VM
 function start_vm() {
     local vm_config=$1
     local common_config=$2
-    local network_name=$3
+    local bridge_name=$3
 
     # Extract VM configuration
     local name=$(echo "${vm_config}" | yq '.name')
@@ -98,12 +151,21 @@ function start_vm() {
     export DEFAULT_IMAGE_SOURCE_URL="${image_source_url}"
     export DEFAULT_DIR_IMAGE="${DEFAULT_DIR_IMAGE}"
 
+    # Set OS-specific defaults
+    if [ "${OS_TYPE}" == "darwin" ]; then
+        export DEFAULT_KVM_DARWIN_CPU="${cpu}"
+        export DEFAULT_KVM_DARWIN_MEMORY="${memory}"
+    else
+        export DEFAULT_KVM_LINUX_CPU="${cpu}"
+        export DEFAULT_KVM_LINUX_MEMORY="${memory}"
+    fi
+
     # Create a temporary script to start the VM with the correct parameters
     local temp_script="/tmp/start-vm-${name}.sh"
     cat > "${temp_script}" << EOF
 #!/bin/bash
 "${SCRIPT_DIR}/../isolated-vm/start-vm.sh" \\
-    --network "${network_name}" \\
+    --bridge "${bridge_name}" \\
     --mac "${mac}" \\
     --ip "${ip}" \\
     --hostname "${hostname}" \\
@@ -135,18 +197,20 @@ function main() {
     fi
 
     # Read network configuration
-    local network_name=$(yq '.network.name' "${CONFIG_FILE}")
+    local bridge_name=$(yq '.network.name' "${CONFIG_FILE}")
     local subnet=$(yq '.network.subnet' "${CONFIG_FILE}")
     local gateway=$(yq '.network.gateway' "${CONFIG_FILE}")
     local dns=$(yq '.network.dns[]' "${CONFIG_FILE}")
 
-    # Create network if it doesn't exist
-    if ! check_network_exists "${network_name}"; then
-        echo "Creating network ${network_name}..."
-        create_network "${network_name}" "${subnet}" "${gateway}" "${dns}"
-    else
-        echo "Network ${network_name} already exists"
-    fi
+    # Create bridge network based on OS
+    case ${OS_TYPE} in
+        linux)
+            create_bridge_network_linux "${bridge_name}" "${subnet}" "${gateway}"
+            ;;
+        darwin)
+            create_bridge_network_darwin "${bridge_name}" "${subnet}" "${gateway}"
+            ;;
+    esac
 
     # Read common configuration
     local common_config=$(yq '.common' "${CONFIG_FILE}")
@@ -156,11 +220,29 @@ function main() {
     for ((i=0; i<vm_count; i++)); do
         local vm_config=$(yq ".vms[${i}]" "${CONFIG_FILE}")
         echo "Starting VM $(yq '.name' <<< "${vm_config}")..."
-        start_vm "${vm_config}" "${common_config}" "${network_name}"
+        start_vm "${vm_config}" "${common_config}" "${bridge_name}"
     done
 
     echo "All VMs have been started successfully!"
 }
+
+# Cleanup function
+function cleanup() {
+    local bridge_name=$(yq '.network.name' "${CONFIG_FILE}")
+    local subnet=$(yq '.network.subnet' "${CONFIG_FILE}")
+    
+    case ${OS_TYPE} in
+        linux)
+            cleanup_bridge_network_linux "${bridge_name}" "${subnet}"
+            ;;
+        darwin)
+            cleanup_bridge_network_darwin "${bridge_name}"
+            ;;
+    esac
+}
+
+# Register cleanup function
+trap cleanup EXIT
 
 # Run the main function
 main "$@" 
