@@ -2,6 +2,7 @@
 
 # Script to start multiple VMs based on YAML configuration
 # This script creates a network and starts multiple VMs that can communicate with each other
+# It uses the existing start-vm.sh script as its base
 
 set -e
 
@@ -95,12 +96,34 @@ function start_vm() {
     export DEFAULT_IMAGE="${image}"
     export DEFAULT_KERNEL_VERSION="${kernel_version}"
     export DEFAULT_IMAGE_SOURCE_URL="${image_source_url}"
+    export DEFAULT_DIR_IMAGE="${DEFAULT_DIR_IMAGE}"
 
-    # Start the VM using the original script
-    "${SCRIPT_DIR}/../isolated-vm/start-vm.sh" \
-        --network "${network_name}" \
-        --mac "${mac}" \
-        --ip "${ip}"
+    # Create a temporary script to start the VM with the correct parameters
+    local temp_script="/tmp/start-vm-${name}.sh"
+    cat > "${temp_script}" << EOF
+#!/bin/bash
+"${SCRIPT_DIR}/../isolated-vm/start-vm.sh" \\
+    --network "${network_name}" \\
+    --mac "${mac}" \\
+    --ip "${ip}" \\
+    --hostname "${hostname}" \\
+    --username "${username}" \\
+    --password "${password}" \\
+    --salt "${salt}" \\
+    --cpu "${cpu}" \\
+    --memory "${memory}" \\
+    --disk-size "${disk_size}" \\
+    --sshd-port "${ssh_port}" \\
+    --containerd-port "${containerd_port}" \\
+    --rimd-port "${rimd_port}" \\
+    --image "${image}" \\
+    --kernel-version "${kernel_version}" \\
+    --image-source-url "${image_source_url}"
+EOF
+
+    chmod +x "${temp_script}"
+    "${temp_script}"
+    rm "${temp_script}"
 }
 
 # Main script
@@ -109,7 +132,7 @@ function main() {
     if [ ! -f "${CONFIG_FILE}" ]; then
         echo "Error: Configuration file ${CONFIG_FILE} not found"
         exit 1
-    }
+    fi
 
     # Read network configuration
     local network_name=$(yq '.network.name' "${CONFIG_FILE}")
