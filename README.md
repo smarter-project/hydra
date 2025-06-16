@@ -60,19 +60,19 @@ to store images at the container and not on the node, because the container file
 
 #### TL;DR
 
-
+Change `$(pwd)/image` to another directory if that is not appropriate. and `cat ${HOME}/.ssh/id_ed25519.pub` to the appropriate key to be used.
 
 ```
 docker run \
     -d \
     --rm \
     --network host \
-    --env "VM_SSH_AUTHORIZED_KEY=\"$(cat <file with SSH public key>)\"" \
-    -v <local image directory>:/root/image \
+    --env "VM_SSH_AUTHORIZED_KEY=\"$(cat ${HOME}/.ssh/id_ed25519.pub)\"" \
+    -v $(pwd)/image:/root/image \
     -v /var/lib/kubelet:/var/lib/kubelet \
     -v /var/log/pods:/var/log/pods \
     --device /dev/kvm:/dev/kvm \
-    isolated-vm
+    ghcr.io/smarter-project/hydra/isolated-vm:main
 ```
 
 Update `<file with SSH public key>` and `<local image directory>` with the correct files. `<local image directory>` has to have a full path.
@@ -118,6 +118,8 @@ THe following variables configures the script:
 | `DEFAULT_KVM_DARWIN_BIOS` | bios to boot (UEFI) when running under MacOS | `/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH}-code.fd` | 
 | `DEFAULT_KVM_LINUX_v9_BIOS` | bios to boot (UEFI) when running under Linux/container with KVM v9x | |
 | `DEFAULT_KVM_LINUX_v7_BIOS` | bios to boot (UEFI) when running under Linux/container with KVM v7x | `/usr/share/qemu-efi-aarch64/QEMU_EFI.fd` |
+| `DEFAULT_KVM_LINUX_v7_BIOS`(aarch64) | bios to boot (UEFI) when running under Linux/container with KVM v7x | `/usr/share/AAVMF/AAVMF_CODE.fd` |
+| `DEFAULT_KVM_LINUX_v7_BIOS`(amd64) | bios to boot (UEFI) when running under Linux/container with KVM v7x | `/usr/share/ovmf/OVMF.fd` |
 | `DEFAULT_KVM_UNKNWON_BIOS` | bios to boot (UEFI) when running under unknown OS | |
 | `DEFAULT_KVM_HOST_SSHD_PORT` | TCP port to be used on the host to access port 22 on VM | 5555 |
 | `DEFAULT_KVM_HOST_CONTAINERD_PORT` | TCP port to be used on the host to access port 35000 (cs-grpc-proxy) on VM | 35000 |
