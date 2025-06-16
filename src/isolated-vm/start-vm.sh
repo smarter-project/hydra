@@ -57,9 +57,21 @@ esac
 }
 : ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
 : ${DEFAULT_KVM_LINUX_v9_BIOS_VAR:=""}
-: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"}
-: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/qemu-efi-aarch64/QEMU_EFI_vars.fd"}
-#: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
+case ${ARCH} in
+	amd64) 
+		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/ovmf/OVMF.fd"}
+		#: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/OVMF/OVMF_VARS.fd"}
+		;;
+	arm64)
+		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/AAVMF/AAVMF_CODE.fd"}
+		#: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/AAVMF/AAVMF_VARS.fd"}
+		;;
+	*)
+		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/ovmf/OVMF.fd"}
+		#: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/OVMF/OVMF_VARS.fd"}
+		;;
+esac
+: ${DEFAULT_KVM_LINUX_BIOS:="/usr/share/qemu/edk2-${ARCH_M}-code.fd"}
 : ${DEFAULT_KVM_UNKNWON_BIOS:=""}
 : ${DEFAULT_KVM_UNKNWON_BIOS_VAR:=""}
 # If these values are empty, the ports will not be redirected.
@@ -744,7 +756,7 @@ function check_if_bios_needed() {
 		echo "Bios requested \"${KVM_BIOS}\" not found"
 		exit 1
 	fi
-	BIOS_OPTION="-drive if=pflash,format=raw,readonly,file=${KVM_BIOS}"
+	BIOS_OPTION="-drive if=pflash,format=raw,readonly=on,file=${KVM_BIOS}"
 	if [ -z "${KVM_BIOS_VAR}" ]
 	then
 		return
