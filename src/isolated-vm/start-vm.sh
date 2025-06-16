@@ -1,3 +1,4 @@
+#!/bin/bash
 
 HW_ACCEL=""
 REDIRECT_PORT=""
@@ -172,10 +173,15 @@ function check_image_exists() {
 	then
 		DEFAULT_IMAGE=$(echo "${DEFAULT_IMAGE}" | sed -e "s/[.]xz$//")
 	fi
-	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ]
+	if [ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" ]
 	then
-		echo "Image ${DEFAULT_IMAGE} exists on disk, reusing"
-		return
+		if [ ${IMAGE_RESTART} -eq 0 ]
+		then
+			echo "Image ${DEFAULT_IMAGE} exists on disk, reusing"
+			return
+		fi
+		echo "Image ${DEFAULT_IMAGE} exists on disk bt restart is required"
+		rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" > /dev/null
 	fi
 	if [ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ]
 	then
