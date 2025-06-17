@@ -67,7 +67,7 @@ docker run \
     -d \
     --rm \
     --network host \
-    --env "VM_SSH_AUTHORIZED_KEY=\"$(cat ${HOME}/.ssh/id_ed25519.pub)\"" \
+    --env "VM_SSH_AUTHORIZED_KEY=$(cat ${HOME}/.ssh/id_ed25519.pub)" \
     -v $(pwd)/image:/root/image \
     -v /var/lib/kubelet:/var/lib/kubelet \
     -v /var/log/pods:/var/log/pods \
