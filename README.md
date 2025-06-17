@@ -67,7 +67,7 @@ docker run \
     -d \
     --rm \
     --network host \
-    --env "VM_SSH_AUTHORIZED_KEY=$(ls ${HOME}/.ssh/*\..pub | head -n 1 | xrgs cat 2>/dev/null)" \
+    --env "VM_SSH_AUTHORIZED_KEY=$(ls ${HOME}/.ssh/*\.pub 2?dev/null | head -n 1 | xargs cat 2>/dev/null)" \
     -v $(pwd)/image:/root/image \
     -v /var/lib/kubelet:/var/lib/kubelet \
     -v /var/log/pods:/var/log/pods \
