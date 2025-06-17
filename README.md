@@ -75,7 +75,20 @@ docker run \
     ghcr.io/smarter-project/hydra/isolated-vm:main
 ```
 
-Update `<file with SSH public key>` and `<local image directory>` with the correct files. `<local image directory>` has to have a full path.
+This command will run the container without logs. use the following command to observe the logs
+```
+docker logs -f <container ID> 
+```
+
+and this one to have a shell into the container. but preferably use ssh 
+
+```
+docker exec -it <container ID> /bin/bash
+```
+
+```
+ssh -p <DEFAULT_KVM_HOST_SSHD_PORT> <VM_USERNAME>@localhost
+```
 
 #### Details
 
