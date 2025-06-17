@@ -60,14 +60,14 @@ to store images at the container and not on the node, because the container file
 
 #### TL;DR
 
-Change `$(pwd)/image` to another directory if that is not appropriate. and `cat ${HOME}/.ssh/id_ed25519.pub` to the appropriate key to be used.
+Change `$(pwd)/image` to another directory if that is not appropriate. and `i$(ls ${HOME}/.ssh/*\..pub | head -n 1 | xrgs cat 2>/dev/null)` to the appropriate key to be used (this scirpt will select the first key available)..
 
 ```
 docker run \
     -d \
     --rm \
     --network host \
-    --env "VM_SSH_AUTHORIZED_KEY=$(cat ${HOME}/.ssh/id_ed25519.pub)" \
+    --env "VM_SSH_AUTHORIZED_KEY=$(ls ${HOME}/.ssh/*\..pub | head -n 1 | xrgs cat 2>/dev/null)" \
     -v $(pwd)/image:/root/image \
     -v /var/lib/kubelet:/var/lib/kubelet \
     -v /var/log/pods:/var/log/pods \
