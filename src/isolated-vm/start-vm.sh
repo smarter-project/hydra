@@ -827,7 +827,7 @@ function check_gpu_options() {
 	fi
 }
 
-function check_if_vsock_device_enabledO() {
+function check_if_vsock_device_enabled() {
 	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
 	if [ "${OS}" == "Darwin" ]
         then
@@ -910,13 +910,13 @@ else
  -smp '${KVM_CPU}'
  '${HW_ACCEL}'
  -cpu '${KVM_CPU_TYPE}'
- -kernel "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'"
+ -kernel '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'
  -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on"
  -netdev user,id=n1'${REDIRECT_PORT}'
  -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca
  '${VSOCK_DEVICE}'
- -initrd "'${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'"
- -drive "if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'"
+ -initrd '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'
+ -drive if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'
  -device virtio-blk-device,id=drv0,drive=drive1
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
