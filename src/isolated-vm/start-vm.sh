@@ -208,6 +208,8 @@ function check_image_exists() {
 
 			if [ $? -ne 0 ]
 			then
+				# Remove the file if exists, wget may leave an empty file
+				rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" 2>/dev/null
 				echo "Download unsucceful, bailing out"
 				exit 1
 			fi
@@ -256,9 +258,10 @@ function check_kernel_image() {
 		then
 			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ARTIFACT_URL_TOKEN}"
 		fi
-		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "image/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
+		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
 		if [ $? -ne 0 ]
 		then
+			rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
 			echo "Download unsuccessful, bailing out"
 			exit 1
 		fi
