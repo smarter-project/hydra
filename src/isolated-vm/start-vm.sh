@@ -25,6 +25,7 @@ esac
 : ${ENABLE_VIRTIO_GPU:=0}
 : ${DEFAULT_VIRTIO_GPU_VRAM:=4}
 : ${ADDITIONAL_9P_MOUNTS:=""}
+: ${EXTERNAL_9P_KUBELET_MOUNTS:=0}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
 : ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
@@ -204,15 +205,16 @@ function check_image_exists() {
 		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" ]
 		then
 			echo "Downloading image ${DEFAULT_IMAGE_COMPRESSED} from ${DEFAULT_IMAGE_SOURCE_URL}"
-			wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE_COMPRESSED}"
+			wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE_COMPRESSED}"
 
 			if [ $? -ne 0 ]
 			then
 				# Remove the file if exists, wget may leave an empty file
-				rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" 2>/dev/null
+				rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" 2>/dev/null
 				echo "Download unsucceful, bailing out"
 				exit 1
 			fi
+			mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" 2>/dev/null
 		else
 			echo "Using existing image ${DEFAULT_IMAGE_COMPRESSED}"
 		fi
@@ -258,13 +260,14 @@ function check_kernel_image() {
 		then
 			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ARTIFACT_URL_TOKEN}"
 		fi
-		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" "${DEFAULT_RIMD_ARTIFACT_URL}"
+		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_RIMD_ARTIFACT_URL}"
 		if [ $? -ne 0 ]
 		then
-			rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
+			rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" 2>/dev/null
 			echo "Download unsuccessful, bailing out"
 			exit 1
 		fi
+		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
 	fi
 	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}" \
 		-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
@@ -548,11 +551,21 @@ EOF
 	fi
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 	then
-		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+		if [ ${EXTERNAL_9P_KUBELET_MOUNTS} -eq 0 ]
+		then
+			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
 - [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
-- [ mount, "host0"]
-- [ mount, "host1"]
+EOF
+		else
+			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo '10.0.2.2 /var/log/pods 9p uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
+EOF
+		fi
+		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+- [ mount, "/var/lib/kubelet"]
+- [ mount, "/var/log/pods"]
 EOF
 	fi
 	if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
@@ -669,7 +682,7 @@ EOF
 function check_ports_redirection() {
 	REDIRECT_PORT=""
 	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_SSHD_PORT}-:22"
-	[ -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -gt 0 -o -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
 	[ -z "${DEFAULT_KVM_HOST_RIMD_PORT}" -o ${RUN_BARE_KERNEL} -eq 0 ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_RIMD_PORT}-:35001"
 
 	if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ]
@@ -906,31 +919,45 @@ then
  '${KVM_NOGRAPHIC}
 else
 	check_if_vsock_device_enabled
+	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0"
+	APPEND="-append"
 
 	CMD_LINE='qemu-system-'${ARCH_M}'
  -m '${KVM_MEMORY}'g
- -M '${KVM_MACHINE_TYPE}'
+ -M '${KVM_MACHINE_TYPE}',gic-version=max
  -smp '${KVM_CPU}'
  '${HW_ACCEL}'
  -cpu '${KVM_CPU_TYPE}'
+ '${BIOS_OPTION}'
  -kernel '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'
- -append "ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:on"
  -netdev user,id=n1'${REDIRECT_PORT}'
  -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca
  '${VSOCK_DEVICE}'
  -initrd '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'
- -drive if=none,id=drive1,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'
+ -drive if=none,id=drive1,format=qcow2,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'
  -device virtio-blk-device,id=drv0,drive=drive1
+ -serial mon:stdio
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
- -serial mon:stdio
  '${KVM_NOGRAPHIC}
+# -serial mon:stdio
 fi
 
-echo "${CMD_LINE}"
+if [ ! -z "${APPEND}" ]
+then
+	echo "${CMD_LINE}
+  ${APPEND} ${APPEND_OPTIONS}"
+else
+	echo "${CMD_LINE}"
+fi
 
 [ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
 
-exec ${CMD_LINE}
+if [ ! -z "${APPEND}" ]
+then
+	exec ${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"
+else
+	exec ${CMD_LINE}
+fi
 
 exit 0
