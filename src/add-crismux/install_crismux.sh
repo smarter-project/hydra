@@ -20,6 +20,8 @@
 : ${CONTAINERD_K3S_CONFIG:="${K3S_DATA_DIR}/agent/etc/containerd/config.toml"}
 : ${CONTAINERD_K3S_CRIS_CONFIG:="${K3S_DATA_DIR}/agent/etc/containerd/config-crismux.toml"}
 : ${CONTAINERD_SOCKET_FILE:="${K3S_SOCKET_DIR}/containerd-crismux.sock"}
+: ${NELLY_HOSTNAME:="localhost"}
+: ${NELLY_PORT:="35000"}
 
 function modify_existing_k3s() {
 	if [ ! -f "${K3S_SERVICE_FILE}" ]
@@ -123,6 +125,7 @@ Type=notify
 EnvironmentFile=-/etc/default/%N
 EnvironmentFile=-/etc/sysconfig/%N
 EnvironmentFile=-/etc/systemd/system/containerd.service.env
+Environment=PATH=${K3S_DATA_DIR}/data/current/bin/bin:\$PATH
 KillMode=process
 Delegate=yes
 User=root
@@ -217,7 +220,7 @@ function add_crismux() {
 runtimes:
   default: "unix://${CONTAINERD_SOCKET_FILE}"
 # This is the runtime for the secure containers
-  nelly:   "tcp:localhost:35000"
+  nelly:   "tcp:${NELLY_HOSTNAMEi}:${NELLY_PORT}"
 tls:
   cert: "/path/to/cert.pem"
   key: "/path/to/key.pem"
