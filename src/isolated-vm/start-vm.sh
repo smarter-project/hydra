@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eu
+
 HW_ACCEL=""
 REDIRECT_PORT=""
 OS=$(uname -o)
@@ -16,12 +18,12 @@ case ${ARCH_M} in
 		ARCH=${ARCH_M}
 		ARCH_GEN=${ARCH_M};;
 esac
-: ${DEBUG:=0}
-[ ${DEBUG} -gt 0 ] && set -x
+[ ${DEBUG:=0} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
 : ${DISABLE_CONTAINERD_CSI_PROXY:=0}
+: ${ENABLE_K3S_DIOD:=0}
 : ${ENABLE_VIRTIO_GPU:=0}
 : ${DEFAULT_VIRTIO_GPU_VRAM:=4}
 : ${ADDITIONAL_9P_MOUNTS:=""}
@@ -77,6 +79,7 @@ esac
 : ${DEFAULT_KVM_UNKNWON_BIOS_VAR:=""}
 # If these values are empty, the ports will not be redirected.
 : ${DEFAULT_KVM_HOST_SSHD_PORT:="5555"}
+: ${DEFAULT_KVM_HOST_DIOD_PORT:="30564"}
 : ${DEFAULT_KVM_HOST_CONTAINERD_PORT:="35000"}
 : ${DEFAULT_KVM_HOST_RIMD_PORT:="35001"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
@@ -89,6 +92,7 @@ esac
 : ${DEFAULT_RIMD_KERNEL_FILENAME:="Image.gz"}
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="initramfs.linux_arm64.cpio"}
 : ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
+: ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
 
 IMAGE_RESTART=0
 
@@ -200,43 +204,48 @@ function check_image_exists() {
 	then
 		echo "Using backup image from ${DEFAULT_IMAGE_SOURCE_URL}"
 		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}"
-	else
-		echo "Image ${DEFAULT_IMAGE} does not exist on disk, checking if downloading is needed"
-		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" ]
-		then
-			echo "Downloading image ${DEFAULT_IMAGE_COMPRESSED} from ${DEFAULT_IMAGE_SOURCE_URL}"
-			wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE_COMPRESSED}"
-
-			if [ $? -ne 0 ]
-			then
-				# Remove the file if exists, wget may leave an empty file
-				rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" 2>/dev/null
-				echo "Download unsucceful, bailing out"
-				exit 1
-			fi
-			mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" 2>/dev/null
-		else
-			echo "Using existing image ${DEFAULT_IMAGE_COMPRESSED}"
-		fi
-		if [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.zip$ ]]
-		then
-			echo "Image is compressed with zip, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
-			unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
-		elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.gz$ ]]
-		then
-			echo "Image is compressed with gzip, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
-			gunzip -d "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
-		elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.bz2$ ]]
-		then
-			echo "Image is compressed with bzip2, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
-			bunzip2 -d "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
-		elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.xz$ ]]
-		then
-			echo "Image is compressed with xz, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
-			xz --decompress "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
-		fi
-		[ ${COPY_IMAGE_BACKUP} -gt 0 ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp
+		return
 	fi
+
+	# Have to download a new image
+
+	echo "Image ${DEFAULT_IMAGE} does not exist on disk, checking if downloading is needed"
+	if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" ]
+	then
+		echo "Downloading image ${DEFAULT_IMAGE_COMPRESSED} from ${DEFAULT_IMAGE_SOURCE_URL}"
+		wget -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" "${DEFAULT_IMAGE_SOURCE_URL}/${DEFAULT_IMAGE_COMPRESSED}"
+
+		if [ $? -ne 0 ]
+		then
+			# Remove the file if exists, wget may leave an empty file
+			rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" 2>/dev/null
+			echo "Download unsucceful, bailing out"
+			exit 1
+		fi
+		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}" 2>/dev/null
+	else
+		echo "Using existing image ${DEFAULT_IMAGE_COMPRESSED}"
+	fi
+	if [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.zip$ ]]
+	then
+		echo "Image is compressed with zip, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+		unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+	elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.gz$ ]]
+	then
+		echo "Image is compressed with gzip, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+		gunzip -d "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+	elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.bz2$ ]]
+	then
+		echo "Image is compressed with bzip2, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+		bunzip2 -d "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+	elif [[ ${DEFAULT_IMAGE_COMPRESSED} =~ ^.*\.xz$ ]]
+	then
+		echo "Image is compressed with xz, uncompressing ${DEFAULT_IMAGE_COMPRESSED}"
+		xz --decompress "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE_COMPRESSED}"
+	fi
+	[ ${COPY_IMAGE_BACKUP} -gt 0 ] && cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp
+
+	echo "Image downloaded and available"
 }
 
 function check_kernel_image() {
@@ -391,34 +400,68 @@ function resize_kvm_image() {
 	fi
 }
 
-function check_cloud_init_create() {
-	if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir" ]
+function validate_new_cloud_init() {
+	# test if existing configuration exists
+	if [ -d "${EXISTING_CLOUD_INIT_DIR}" ]
 	then
-		if [ -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso" ]
+		# testing if iso file was generated
+		if [ -e "${DEFAULT_DIR_IMAGE}/cloud-init.iso" ]
 		then
-			mv "${DEFAULT_DIR_IMAGE}/cloud-init.dir" "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old"
-		else
-			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+			# Comparing the two configurations
+			CONFIG_MODIFIED=$(diff "${NEW_CLOUD_INIT_DIR}" "${EXISTING_CLOUD_INIT_DIR}" 2>/dev/null || true) 
+			if [ -z "${CONFIG_MODIFIED}" ]
+			then
+				rm -rf "${NEW_CLOUD_INIT_DIR}"
+				echo "Configuration is the same as it was before so reusing the image"
+				return
+			fi
 		fi
+		rm -rf "${EXISTING_CLOUD_INIT_DIR}" "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+		echo "Configuration has changed so restart the image"
 	fi
-	mkdir "${DEFAULT_DIR_IMAGE}/cloud-init.dir" || exit $?
-	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/meta-data" <<EOF
+	IMAGE_RESTART=1
+	mv "${NEW_CLOUD_INIT_DIR}" "${EXISTING_CLOUD_INIT_DIR}"
+		
+	if [ ${ALWAYS_REUSE_DISK_IMAGE} -gt 0 ]
+	then
+		IMAGE_RESTART=0
+		echo "---------------------------------------"
+		echo "System configuration was chenged that requires the VM to restart from an unitialized disk image"
+		echo "but ALWAYS_REUSE_DISK_IMAGE is set so the changes will not be reflected on the VM but will appear"
+		echo "on the command line"
+		echo "---------------------------------------"
+	fi
+	case ${OS} in
+		Darwin)
+			rm -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+			echo "Cloud-init data generated (iso using hdiutil)"
+			hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${EXISTING_CLOUD_INIT_DIR}"
+			;;
+		*)
+			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+			echo "Cloud-init data generated (iso using mkisofs)"
+			mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -input-charset utf-8 -volid cidata -joliet -rock "${EXISTING_CLOUD_INIT_DIR}"
+		;;
+        esac
+}
+
+function cloud_init_create() {
+	if [ -d "${NEW_CLOUD_INIT_DIR}" ]
+	then
+		# If it exists it is leftover from a interrupted installation, so remove it
+		rm -rf "${NEW_CLOUD_INIT_DIR}"
+	fi
+	mkdir -p "${NEW_CLOUD_INIT_DIR}" 
+	cat > "${NEW_CLOUD_INIT_DIR}/meta-data" <<EOF
 EOF
-	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	cat > "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 #cloud-config
 EOF
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 -o ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
-#		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-#mounts:
-#EOF
 		VM_MOUNT_POINTS=""
 		if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
-#			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-#- [ host0, /var/lib/kubelet, 9p, "trans=virtio,version=9p2000.L" ]
-#- [ host1, /var/log/pods, 9p, "trans=virtio,version=9p2000.L" ]
-#EOF
 			VM_MOUNT_POINTS=',"/var/lib/kubelet","/var/log/pods"'
 		fi
 		if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
@@ -441,15 +484,12 @@ EOF
 					exit 1
 				fi
 				VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
-#				cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
-#- [ host${MOUNT_ID}, ${MOUNT_VM}, 9p, "trans=virtio,version=9p2000.L", 0, 0 ]
-#EOF
 				MOUNT_ID=$((${MOUNT_ID}+1))
 			done
 		fi
 	fi
 	: ${VM_PASSWORD_ENCRYPTED:=$(echo ${VM_PASSWORD} | openssl passwd -6 -salt ${VM_SALT} -stdin)}
-	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 users:
 - default
 - name: ${VM_USERNAME}
@@ -461,11 +501,11 @@ users:
 EOF
 	if [ ! -z "${VM_SSH_AUTHORIZED_KEY}" ]
 	then
-		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
   ssh_authorized_keys: ['${VM_SSH_AUTHORIZED_KEY}']
 EOF
 	fi
-	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 hostname: ${VM_HOSTNAME}
 create_hostname_file: true
 package_reboot_if_required: true
@@ -473,15 +513,18 @@ package_update: true
 package_upgrade: true
 packages:
 EOF
-	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- diod
+EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - containerd
 - 9mount
 EOF
-	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - ${KERNEL_VERSION}
 write_files:
 EOF
-	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - content: |
     [Unit]
     Description=TCP proxy for containerd
@@ -527,7 +570,36 @@ EOF
               IoGid = 0
   path: /etc/containerd/config.toml.new
 EOF
-	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- content: |
+    --
+    -- /etc/diod.conf - config file for diod distributed I/O daemon
+    --
+    -- NOTE: This config file is a lua script that diod runs, then extracts
+    -- the value of certain globally defined variables.  See diod.conf(5).
+
+    listen = { "0.0.0.0:564" }
+    -- nwthreads = 16
+    -- auth_required = 1
+    auth_required = 0
+    -- logdest = "syslog:daemon:err"
+
+    exports = { "/var/lib/kubelet","/var/log/pods" }
+
+    -- allsquash = 0
+    -- squashuser = "nobody"
+  path: /etc/diod.conf.new
+- encoding: b64
+  owner: root:root
+  permissions: '0744'
+  content: |
+EOF
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && base64 -w 80 -i ../add-crismux/install_crismux.sh | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+  path: /usr/bin/install_crismux.sh
+EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - content: |
     Hydra VM installed and configured. SSH and csi-grpc-proxy are running.
     You can login on this terminal with username/password provided
@@ -535,17 +607,25 @@ EOF
   path: /etc/issue.hydra
 runcmd:
 EOF
-	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
 EOF
-	cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","cat /etc/issue.hydra >> /etc/issue"]
+EOF
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ bash,"-c","wget -O - https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION_INSTALL} sh -"]
+- [ bash,"-c","NELLY_HOSTNAME=10.0.2.2 /usr/bin/install_crismux.sh install"]
+- [ bash,"-c","cat /etc/diod.conf.new > /etc/diod.conf"]
+- [ bash,"-c","sed -ie 's/DIOD_ENABLE=false/DIOD_ENABLE=true/g' /etc/default/diod"]
+- [ systemctl, daemon-reload ]
+- [ systemctl, restart, diod ]
 EOF
 	if [ ! -z "${VM_MOUNT_POINTS}" ]
 	then
-		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ mkdir,"-p"${VM_MOUNT_POINTS} ]
 EOF
 	fi
@@ -553,17 +633,17 @@ EOF
 	then
 		if [ ${EXTERNAL_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
-			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 EOF
 		else
-			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
 - [ bash,"-c","echo '10.0.2.2 /var/log/pods 9p uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
 EOF
 		fi
-		cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ mount, "/var/lib/kubelet"]
 - [ mount, "/var/log/pods"]
 EOF
@@ -588,22 +668,22 @@ EOF
 				exit 1
 			fi
 			VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
-			cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ mount, "host${MOUNT_ID}"]
 EOF
 			MOUNT_ID=$((${MOUNT_ID}+1))
 		done
 	fi
-	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${DEFAULT_DIR_IMAGE}/cloud-init.dir/user-data" <<EOF
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ systemctl, daemon-reload ]
 - [ systemctl, restart, containerd ]
 - [ systemctl, enable, csi-grpc-proxy.service ]
 - [ systemctl, start, csi-grpc-proxy.service ]
 EOF
-	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/vendor-data" <<EOF
+	cat > "${NEW_CLOUD_INIT_DIR}/vendor-data" <<EOF
 EOF
-	cat > "${DEFAULT_DIR_IMAGE}/cloud-init.dir/network-config" <<EOF
+	cat > "${NEW_CLOUD_INIT_DIR}/network-config" <<EOF
 instance-id: ${VM_HOSTNAME}
 local-hostname: ${VM_HOSTNAME}
 network:
@@ -642,47 +722,13 @@ network:
       - to: 0.0.0.0/0
         via: 10.0.2.2
 EOF
-	if [ -d "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" ]
-	then
-		CONFIG_MODIFIED=$(diff "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" "${DEFAULT_DIR_IMAGE}/cloud-init.dir")
-		if [ -z "${CONFIG_MODIFIED}" ]
-		then
-			rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" || exit $?
-			echo "Configuration is the same as it was before so reusing the image"
-			return
-		fi
-		echo "Configuration has changed so restart the image"
-		rm -rf "${DEFAULT_DIR_IMAGE}/cloud-init.dir.old" || exit $?
-	fi
-		
-	IMAGE_RESTART=1
-	if [ ${ALWAYS_REUSE_DISK_IMAGE} -gt 0 ]
-	then
-		IMAGE_RESTART=0
-		echo "---------------------------------------"
-		echo "System configuration was chenged that requires the VM to restart from an unitialized disk image"
-		echo "but ALWAYS_REUSE_DISK_IMAGE is set so the changes will not be reflected on the VM but will appar"
-		echo "on the command line"
-		echo "---------------------------------------"
-	fi
-	case ${OS} in
-		Darwin)
-			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
-			echo "Cloud-init data generated (iso using hdiutil)"
-			hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-			;;
-		*)
-			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
-			echo "Cloud-init data generated (iso using mkisofs)"
-			mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -input-charset utf-8 -volid cidata -joliet -rock "${DEFAULT_DIR_IMAGE}/cloud-init.dir"
-		;;
-        esac
 }
 
 function check_ports_redirection() {
 	REDIRECT_PORT=""
 	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_SSHD_PORT}-:22"
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -gt 0 -o -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
+	[ ${ENABLE_K3S_DIOD} -eq 0 -o -z "${DEFAULT_KVM_HOST_DIOD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_DIOD_PORT}-:564"
 	[ -z "${DEFAULT_KVM_HOST_RIMD_PORT}" -o ${RUN_BARE_KERNEL} -eq 0 ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_RIMD_PORT}-:35001"
 
 	if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ]
@@ -876,7 +922,12 @@ check_ssh_authorized_key
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
-	check_cloud_init_create
+	NEW_CLOUD_INIT_DIR="${DEFAULT_DIR_IMAGE}/cloud-init.dir.new"
+	EXISTING_CLOUD_INIT_DIR="${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+
+	cloud_init_create
+
+	validate_new_cloud_init
 
 	check_image_exists
 else
@@ -899,6 +950,8 @@ check_if_bios_needed
 check_mount_filesystems
 
 check_gpu_options
+
+APPEND=""
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
