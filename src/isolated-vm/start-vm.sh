@@ -898,6 +898,15 @@ function check_if_vsock_device_enabled() {
 	fi
 }
 
+function check_if_9p_remote_local_bare_kernel(){
+	if [ ${EXTERNAL_9P_KUBELET_MOUNTS} -eq 0 ]
+	then
+		EXTRA_APPEND="9P_TRANSPORT=virtio"
+	else
+		EXTRA_APPEND="9P_TRANSPORT=tcp"
+	fi
+}
+
 # ----- Main -------------------------------------------------------------------------------------
 
 check_requirements qemu-system-${ARCH_M}
@@ -973,7 +982,8 @@ then
  '${KVM_NOGRAPHIC}
 else
 	check_if_vsock_device_enabled
-	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 9P_TRANSPORT=virtio"
+	check_if_9p_remote_local_bare_kernel
+	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ${EXTRA_APPEND}"
 	APPEND="-append"
 
 	CMD_LINE='qemu-system-'${ARCH_M}'
