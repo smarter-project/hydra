@@ -533,6 +533,7 @@ EOF
     [Service]
     Environment="PROXY_TO=unix:///run/containerd/containerd.sock"
     Environment="BIND_TO=tcp://0.0.0.0:35000"
+    ExecStartPre=bash -c "findmnt /var/lib/kubelet >/dev/null || mount /var/lib/kubelet;findmnt /var/log/pods >/dev/null || mount /var/log/pods"
     ExecStart=/usr/bin/csi-grpc-proxy
     
     Type=simple
@@ -639,8 +640,8 @@ EOF
 EOF
 		else
 			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
-- [ bash,"-c","echo '10.0.2.2 /var/log/pods 9p uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p noauto,uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo '10.0.2.2 /var/log/pods 9p noauto,uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
 EOF
 		fi
 		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
@@ -972,7 +973,7 @@ then
  '${KVM_NOGRAPHIC}
 else
 	check_if_vsock_device_enabled
-	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0"
+	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 9P_TRANSPORT=virtio"
 	APPEND="-append"
 
 	CMD_LINE='qemu-system-'${ARCH_M}'
