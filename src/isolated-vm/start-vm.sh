@@ -21,6 +21,7 @@ esac
 [ ${DEBUG:=0} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
+: ${ADDITIONAL_KERNEL_COMMANDLINE:=""}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
 : ${DISABLE_CONTAINERD_CSI_PROXY:=0}
 : ${ENABLE_K3S_DIOD:=0}
@@ -983,7 +984,7 @@ then
 else
 	check_if_vsock_device_enabled
 	check_if_9p_remote_local_bare_kernel
-	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ${EXTRA_APPEND}"
+	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
 	APPEND="-append"
 
 	CMD_LINE='qemu-system-'${ARCH_M}'
