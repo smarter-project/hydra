@@ -19,4 +19,7 @@ export DEFAULT_KVM_HOST_SSHD_PORT=5556
 export DEFAULT_KVM_PORTS_REDIRECT="30800:8000;30801:8001;30802:8002"
 export DEFAULT_KVM_DARWIN_CPU=4
 
-./start-vm.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+$SCRIPT_DIR/start-vm.sh
