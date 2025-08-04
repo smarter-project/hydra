@@ -2,6 +2,8 @@
 
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 HW_ACCEL=""
 REDIRECT_PORT=""
 OS=$(uname -o)
@@ -596,7 +598,7 @@ EOF
   permissions: '0744'
   content: |
 EOF
-	[ ${ENABLE_K3S_DIOD} -gt 0 ] && base64 -w 80 -i ../add-crismux/install_crismux.sh | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && base64 -w 80 -i $SCRIPT_DIR/../add-crismux/install_crismux.sh | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
 
 	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
   path: /usr/bin/install_crismux.sh
