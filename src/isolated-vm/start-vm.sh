@@ -460,9 +460,9 @@ EOF
 	cat > "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 #cloud-config
 EOF
+	VM_MOUNT_POINTS=""
 	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 -o ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
-		VM_MOUNT_POINTS=""
 		if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
 			VM_MOUNT_POINTS=',"/var/lib/kubelet","/var/log/pods"'
