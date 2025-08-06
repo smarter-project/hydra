@@ -574,7 +574,8 @@ EOF
               IoGid = 0
   path: /etc/containerd/config.toml.new
 EOF
-	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+	[ ${ENABLE_K3S_DIOD} -gt 0 ] && {
+		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - content: |
     --
     -- /etc/diod.conf - config file for diod distributed I/O daemon
@@ -598,10 +599,32 @@ EOF
   permissions: '0744'
   content: |
 EOF
-	[ ${ENABLE_K3S_DIOD} -gt 0 ] && base64 -w 80 -i $SCRIPT_DIR/../add-crismux/install_crismux.sh | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+                base64 -w 80 -i $SCRIPT_DIR/../add-crismux/install_crismux.sh | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
 
-	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+                cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
   path: /usr/bin/install_crismux.sh
+EOF
+        }
+        [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- owner: root:root
+  permissions: '0744'
+  content: |
+    #!/bin/bash
+    echo "Mounting \$1"
+    while true
+    do
+            mount \$1
+            if [ \$? -gt 0 ]
+            then
+                   echo "Mounting \$1 failed, trying again in 5 seconds"
+                   sleep 5
+                   continue
+            fi
+            break
+    done
+    echo "Mounting \$1 succeed"
+    exit 0
+  path: /usr/bin/wait_for_mount.sh
 EOF
 	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - content: |
@@ -648,8 +671,8 @@ EOF
 EOF
 		fi
 		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ mount, "/var/lib/kubelet"]
-- [ mount, "/var/log/pods"]
+- [ /usr/bin/wait_for_mount.sh, "/var/lib/kubelet"]
+- [ /usr/bin/wait_for_mount.sh, "/var/log/pods"]
 EOF
 	fi
 	if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
