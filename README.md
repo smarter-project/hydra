@@ -108,7 +108,7 @@ THe following variables configures the script:
 | `DRY_RUN_ONLY` | If > 0 will print the command line for the VM and exit | 0 |
 | `DEBUG` | If > 0 will print debug for the script | 0 |
 | `DISABLE_9P_KUBELET_MOUNTS` | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods | 0 |
-| `ADDITIONAL_9P_MOUNTS` | additional mounts format `<host dir>|<vm mount dir>[$<host dir>|<vm mount dir>]` | "" |
+| `ADDITIONAL_9P_MOUNTS` | additional mounts format `<host dir>|<vm mount dir>[$<host dir>|<vm mount dir>]` |  |
 | `COPY_IMAGE_BACKUP` | if > 0 preserve a copy of the image and start form a copy of that image if it exists | 0 |
 | `ALWAYS_REUSE_DISK_IMAGE` | if > 0 reuse existing disk image even if configuration has changed | 0 |
 | `DEFAULT_KERNEL_VERSION` | kernel version to install | `6.12.12+bpo` |
@@ -141,23 +141,36 @@ THe following variables configures the script:
 | `KVM_CPU` | # cpus to allocate | `DEFAULT_KVM_<OS>_CPU`|
 | `KVM_MEMORY` | DRAM to allocate | `DEFAULT_KVM_<OS>_MEMORY` |
 | `KVM_BIOS` | BIOS to use | `DEFAULT_KVM_<OS>_BIOS` |
-| `KVM_MACHINE_TYPE` | KVM machine type | use "virt" or ""pc" |
+| `KVM_MACHINE_TYPE` | KVM machine type | use "virt" or "pc" |
 | `VM_USERNAME` | Usename to created at VM | hailhydra |
 | `VM_SALT` | Salt to be used when creating the encrypted password | 123456 |
 | `VM_PASSWORD` | Cleartext password to be used | hailhydra |
 | `VM_PASSWORD_ENCRYPTED` | Encrypted password to be used, overwrites the cleartext password | | 
 | `VM_HOSTNAME` | Hostname | vm-host |
 | `VM_SSH_AUTHORIZED_KEY` | ssh public key to add to authorized\_key for the user VM_USERNAME | |
+| `VM_SSH_KEY_FILENAME` | Use this file to load the public key into authorized_key |  |
 | `RUN_BARE_KERNEL` | if > 0 then Use kernel and initrd instead of cloud image | 0 | 
-| `DEFAULT_KVM_PORTS_REDIRECT` | format is `<external>:<internal>[;<external>:<internal>]` | "" |
+| `DEFAULT_KVM_PORTS_REDIRECT` | format is `<external>:<internal>[;<external>:<internal>]` |  |
 | `DEFAULT_RIMD_ARTIFACT_URL` | where to download the artifacts (kernel + initrd) | https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts |
-| `RIMD_ARTIFACT_URL_USER` | User to authenticate to get artifacts from URL | "" | 
-| `RIMD_ARTIFACT_URL_PASS` | Password to authenticate to get artifacts from URL | "" |
-| `RIMD_ARTIFACT_URL_TOKEN` | Token to authenticate to get artifacts from URL |  "" |
+| `RIMD_ARTIFACT_URL_USER` | User to authenticate to get artifacts from URL |  | 
+| `RIMD_ARTIFACT_URL_PASS` | Password to authenticate to get artifacts from URL |  |
+| `RIMD_ARTIFACT_URL_TOKEN` | Token to authenticate to get artifacts from URL |   |
 | `DEFAULT_RIMD_ARTIFACT_FILENAME` | Filename to use when storing the downloaded file | artifacts.zip |
-| `DEFAULT_RIMD_KERNEL_FILENAME` | Filename that contains the kernel to run | final_artifact/Image.gz |
-| `DEFAULT_RIMD_IMAGE_FILENAME` | Filename that contains the initrd to run | final_artifact/initramfs.linux_arm64.cpio |
-| `DEFAULT_RIMD_FILESYSTEM_FILENAME` | Filename that contains the read/write filesystem for the VM | final_artifact/something.qcow2 |
+| `DEFAULT_RIMD_KERNEL_FILENAME` | Filename that contains the kernel to run | `final_artifact/Image.gz` |
+| `DEFAULT_RIMD_IMAGE_FILENAME` | Filename that contains the initrd to run | `final_artifact/initramfs.linux_arm64.cpio` |
+| `DEFAULT_RIMD_FILESYSTEM_FILENAME` | Filename that contains the read/write filesystem for the VM | `final_artifact/something.qcow2` |
+| `ADDITIONAL_KERNEL_COMMANDLINE` | When running a bare kernel add this to kernel command line |  |
+| `DISABLE_CONTAINERD_CSI_PROXY` | Disable installation of containerd and csi proxy | 0 |
+| `ENABLE_K3S_DIOD` |  Enable installation of k3s and diod on VM | 0 |
+| `ENABLE_VIRTIO_GPU` | Enable Vulkan acceleration on VM (not ready yet) | 0 |
+| `DEFAULT_VIRTIO_GPU_VRAM` | How much ram to enable for GPU | 4 |
+| `ADDITIONAL_9P_MOUNTS` | Add this additional 9P mounts to VM |  |
+| `EXTERNAL_9P_KUBELET_MOUNTS` | Use tcp transport instead of local transport for 9P mounts | 0 |
+| `DEFAULT_KVM_HOST_DIOD_PORT` | Host port to use for access of DioD on the VM | 30564 |
+| `DEFAULT_KVM_HOST_CONTAINERD_PORT` | Host port to use for access of containerd on the VM | 35000 |
+| `DEFAULT_KVM_HOST_RIMD_PORT` | Host port to use for RIMD server on the VM | 35001 |
+| `DEFAULT_CSI_GRPC_PROXY_URL` | Where to get csi-grpc-proxy | `https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-` |
+| `K3S_VERSION_INSTALL` | Version of K3s to install | `v1.32.6+k3s1` |
 
 ### Crismux
 
