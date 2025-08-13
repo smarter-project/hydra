@@ -33,8 +33,8 @@ esac
 : ${EXTERNAL_9P_KUBELET_MOUNTS:=0}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
-: ${DEFAULT_IMAGE:="debian-12-genericcloud-${ARCH}-20250316-2053.qcow2"}
-: ${DEFAULT_KERNEL_VERSION:="6.12.22+bpo"}
+: ${DEFAULT_IMAGE:="debian-12-backports-generic-${ARCH}-20250804-2194.qcow2"}
+: ${DEFAULT_KERNEL_VERSION:="6.12.38+deb12"}
 : ${VM_USERNAME:="hailhydra"}
 : ${VM_PASSWORD:="hailhydra"}
 : ${VM_SALT:="123456"}
@@ -48,7 +48,7 @@ esac
 : ${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT:=$(pwd)/k3s-var}
 : ${DEFAULT_DIR_K3S_VAR_LINUX_ROOT:=""}
 : ${DEFAULT_DIR_K3S_VAR_OTHER:=$(pwd)/k3s-var}
-: ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/bookworm/20250316-2053/"}
+: ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/bookworm-backports/20250804-2194"}
 : ${DEFAULT_KVM_DARWIN_CPU:=2}
 : ${DEFAULT_KVM_DARWIN_MEMORY:=8}
 : ${DEFAULT_KVM_LINUX_CPU:=2}
