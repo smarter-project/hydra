@@ -56,6 +56,7 @@ esac
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
 : ${DEFAULT_KVM_UNKNOWN_MEMORY:=8}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
+: ${PIDFILE:=$(pwd)/hydra.pid}
 [ ${OS} == "Darwin" ] && {
 	: ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
 	: ${DEFAULT_KVM_DARWIN_BIOS_VAR:=""}
@@ -996,6 +997,7 @@ then
  -smp '${KVM_CPU}'
  -M '${KVM_MACHINE_TYPE}'
  '${HW_ACCEL}'
+ -pidfile '${PIDFILE}'
  '${BIOS_OPTION}'
  -cpu '${KVM_CPU_TYPE}'
  -drive if=none,format=qcow2,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',id=hd0
@@ -1017,6 +1019,7 @@ else
  -M '${KVM_MACHINE_TYPE}',gic-version=max
  -smp '${KVM_CPU}'
  '${HW_ACCEL}'
+ -pidfile '${PIDFILE}'
  -cpu '${KVM_CPU_TYPE}'
  '${BIOS_OPTION}'
  -kernel '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'
