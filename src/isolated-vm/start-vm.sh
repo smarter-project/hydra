@@ -34,7 +34,8 @@ esac
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
 : ${DEFAULT_IMAGE:="debian-12-backports-generic-${ARCH}-20250804-2194.qcow2"}
-: ${DEFAULT_KERNEL_VERSION:="6.12.38+deb12"}
+: ${DEFAULT_KERNEL_VERSION:=""}
+: ${INSTALL_ADDITIONAL_DEBS:=""}
 : ${VM_USERNAME:="hailhydra"}
 : ${VM_PASSWORD:="hailhydra"}
 : ${VM_SALT:="123456"}
@@ -42,7 +43,8 @@ esac
 : ${VM_HOSTNAME:="hydravm"}
 : ${VM_SSH_AUTHORIZED_KEY:=""}
 : ${VM_SSH_KEY_FILENAME:=""}
-: ${KERNEL_VERSION:="linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}"}
+: ${KERNEL_VERSION:=""}
+[ ! -z "${DEFAULT_KERNEL_VERSION}" ] && : ${KERNEL_VERSION:="linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}"}
 : ${DEFAULT_DIR_IMAGE:=$(pwd)/image}
 : ${DEFAULT_DIR_K3S_VAR_DARWIN:=$(pwd)/k3s-var}
 : ${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT:=$(pwd)/k3s-var}
@@ -63,6 +65,7 @@ esac
 }
 : ${DEFAULT_KVM_LINUX_v9_BIOS:=""}
 : ${DEFAULT_KVM_LINUX_v9_BIOS_VAR:=""}
+: ${ENABLE_REBOOT_AFTER_INSTALLATION:=0}
 case ${ARCH} in
 	amd64) 
 		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/ovmf/OVMF.fd"}
@@ -70,7 +73,7 @@ case ${ARCH} in
 		;;
 	arm64)
 		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/AAVMF/AAVMF_CODE.fd"}
-		#: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/AAVMF/AAVMF_VARS.fd"}
+		: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/AAVMF/AAVMF_VARS.fd"}
 		;;
 	*)
 		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/ovmf/OVMF.fd"}
@@ -103,7 +106,7 @@ function check_requirements() {
 	ERROR_STR=""
 	for REQUIRED in $*
 	do
-		EXEC_LOCATION=$(type ${REQUIRED} 2>/dev/null)
+		EXEC_LOCATION=$(type ${REQUIRED} 2>/dev/null || true)
 		[ $? -gt 0 -o -z "{EXEC_LOCATION}" ] && ERROR_STR="${ERROR_STR}${REQUIRED} not available, please install it\n"
 	done
 	if [ ! -z "${ERROR_STR}" ]
@@ -419,7 +422,7 @@ function validate_new_cloud_init() {
 				return
 			fi
 		fi
-		rm -rf "${EXISTING_CLOUD_INIT_DIR}" "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+		rm -rf "${EXISTING_CLOUD_INIT_DIR}" "${DEFAULT_DIR_IMAGE}/cloud-init.iso" || true
 		echo "Configuration has changed so restart the image"
 	fi
 	IMAGE_RESTART=1
@@ -436,12 +439,12 @@ function validate_new_cloud_init() {
 	fi
 	case ${OS} in
 		Darwin)
-			rm -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+			rm -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso" || true
 			echo "Cloud-init data generated (iso using hdiutil)"
 			hdiutil makehybrid -o "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -joliet -iso -default-volume-name cidata "${EXISTING_CLOUD_INIT_DIR}"
 			;;
 		*)
-			rm "${DEFAULT_DIR_IMAGE}/cloud-init.iso"
+			rm -f "${DEFAULT_DIR_IMAGE}/cloud-init.iso" || true
 			echo "Cloud-init data generated (iso using mkisofs)"
 			mkisofs -output "${DEFAULT_DIR_IMAGE}/cloud-init.iso" -input-charset utf-8 -volid cidata -joliet -rock "${EXISTING_CLOUD_INIT_DIR}"
 		;;
@@ -523,8 +526,10 @@ EOF
 - containerd
 - 9mount
 EOF
-	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+	[ ! -z "${KERNEL_VERSION}" ] &&	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - ${KERNEL_VERSION}
+EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 write_files:
 EOF
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
@@ -536,7 +541,7 @@ EOF
     [Service]
     Environment="PROXY_TO=unix:///run/containerd/containerd.sock"
     Environment="BIND_TO=tcp://0.0.0.0:35000"
-    ExecStartPre=bash -c "findmnt /var/lib/kubelet >/dev/null || mount /var/lib/kubelet;findmnt /var/log/pods >/dev/null || mount /var/log/pods"
+    ExecStartPre=/usr/bin/wait_for_mounts.sh
     ExecStart=/usr/bin/csi-grpc-proxy
     
     Type=simple
@@ -544,6 +549,7 @@ EOF
     KillMode=process
     Restart=always
     RestartSec=5
+    TimeoutSec=infinity
     
     # Having non-zero Limit*s causes performance problems due to accounting overhead
     # in the kernel. We recommend using cgroups to do container-local accounting.
@@ -558,6 +564,48 @@ EOF
     [Install]
     WantedBy=multi-user.target
   path: /etc/systemd/system/csi-grpc-proxy.service
+- owner: root:root
+  permissions: '0744'
+  content: |
+    #!/bin/bash
+    
+    # check if mount exist on fstab
+    KUBELET_MOUNT=/var/lib/kubelet
+    PODS_MOUNT=/var/log/pods
+    
+    KUBELET_FSTAB=\$(grep "\${KUBELET_MOUNT}" /etc/fstab)
+    PODS_FSTAB=\$(grep "\${PODS_MOUNT}" /etc/fstab)
+    
+    if [ ! -z "\${KUBELET_FSTAB}" ]
+    then
+    	findmnt "\${KUBELET_MOUNT}" >/dev/null ||
+    	while true
+    	do
+    		echo "Trying to mount \${KUBELET_MOUNT}"
+    		mount "\${KUBELET_MOUNT}"
+    		if [ \$? -eq 0 ]
+    		then
+    			break
+    		fi
+    		sleep 5
+    	done
+    fi
+    if [ ! -z "\${PODS_FSTAB}" ]
+    then
+    	findmnt "\${PODS_MOUNT}" >/dev/null ||
+    	while true
+    	do
+    		echo "Trying to mount \${PODS_MOUNT}"
+    		mount "\${PODS_MOUNT}"
+    		if [ \$? -eq 0 ]
+    		then
+    			break
+    		fi
+    		sleep 5
+    	done
+    fi
+    exit 0
+  path: /usr/bin/wait_for_mounts.sh
 - content: |
     [plugins."io.containerd.grpc.v1.cri".containerd]
             default_runtime_name = "nelly"
@@ -605,34 +653,57 @@ EOF
   path: /usr/bin/install_crismux.sh
 EOF
         }
-        [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - owner: root:root
   permissions: '0744'
   content: |
     #!/bin/bash
-    echo "Mounting \$1"
-    while true
+    
+    if [ -z "\$1" ]
+    then
+            exit 0
+    fi
+    
+    mkdir /tmp/install_debs > /dev/null
+    cd /tmp/install_debs
+    
+    DEBS="\$1"
+    while [ ! -z "\${DEBS}" ]
     do
-            mount \$1
-            if [ \$? -gt 0 ]
+            DEBS_USED=\$(echo "\${DEBS}" | cut -d '\$' -f 1)
+            DEBS=\$(echo "\${DEBS}" | cut -d '$' -f 2-)
+            if [ "\${DEBS}" == "\${DEBS_USED}" ]
             then
-                   echo "Mounting \$1 failed, trying again in 5 seconds"
-                   sleep 5
-                   continue
+                    DEBS=""
             fi
-            break
+            wget -O debs_install.deb "\${DEBS_USED}"
+            if [ -e debs_install.deb ]
+            then
+                    dpkg -i debs_install.deb
+            fi
     done
-    echo "Mounting \$1 succeed"
     exit 0
-  path: /usr/bin/wait_for_mount.sh
-EOF
-	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+  path: /usr/bin/install_debs.sh
+- owner: root:root
+  permissions: '0755'
+  content: |
+    #!/bin/bash
+    
+    IFS=";"
+    echo -en "\e[18t"
+    read -s -n 20 -d "t" t r c
+    echo "rows is \$r, cols is \$c"
+    stty rows \$r cols \$c
+  path: /usr/bin/set-term-size.sh
 - content: |
     Hydra VM installed and configured. SSH and csi-grpc-proxy are running.
     You can login on this terminal with username/password provided
     or using ssh with key provided.
   path: /etc/issue.hydra
 runcmd:
+EOF
+	[ ! -z "${INSTALL_ADDITIONAL_DEBS}" ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ /usr/bin/install_debs.sh, "${INSTALL_ADDITIONAL_DEBS}" ]
 EOF
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
@@ -670,10 +741,6 @@ EOF
 - [ bash,"-c","echo '10.0.2.2 /var/log/pods 9p noauto,uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
 EOF
 		fi
-		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ /usr/bin/wait_for_mount.sh, "/var/lib/kubelet"]
-- [ /usr/bin/wait_for_mount.sh, "/var/log/pods"]
-EOF
 	fi
 	if [ ! -z ${ADDITIONAL_9P_MOUNTS} ]
 	then
@@ -703,10 +770,13 @@ EOF
 		done
 	fi
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ systemctl, enable, csi-grpc-proxy.service ]
 - [ systemctl, daemon-reload ]
 - [ systemctl, restart, containerd ]
-- [ systemctl, enable, csi-grpc-proxy.service ]
 - [ systemctl, start, csi-grpc-proxy.service ]
+EOF
+	[ ${ENABLE_REBOOT_AFTER_INSTALLATION} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ shutdown, -r, 0 ]
 EOF
 	cat > "${NEW_CLOUD_INIT_DIR}/vendor-data" <<EOF
 EOF
@@ -745,6 +815,14 @@ network:
       addresses: [10.0.2.15/24]
       nameservers:
            addresses: [10.0.2.3]
+      routes:
+      - to: 0.0.0.0/0
+        via: 10.0.2.2
+    eth0:
+      dhcp4: no
+      addresses: [10.0.2.15/24]
+      nameservers:
+           addresses: [10.0.2.2]
       routes:
       - to: 0.0.0.0/0
         via: 10.0.2.2
