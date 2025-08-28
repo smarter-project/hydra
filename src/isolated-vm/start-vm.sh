@@ -837,7 +837,7 @@ EOF
 }
 
 function check_ports_redirection() {
-	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || {
+	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" -o ${ENABLE_KRUNKIT} -gt 0 ] || {
 		if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ] 
 		then
 		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_HOST_SSHD_PORT}:22"
@@ -1066,8 +1066,10 @@ function create_tmp_socket_krunkit(){
 
 function krunkitcleanup()
 {
-	echo "KRUNKITPID=${KRUNKITPID}"
-	kill ${KRUNKITPID} %1
+	echo "killing all processes ${KRUNKITPID}"
+	kill ${KRUNKITPID} %1 2>/dev/null || true
+	wait ${KRUNKITPID} %1 2>/dev/null || true
+	sleep 10
 }
 
 # ----- Main -------------------------------------------------------------------------------------
@@ -1219,8 +1221,8 @@ else
 		 -debug 
 		 -mtu 1500 
 		 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
-		 -ssh-port '${GVPROXY_HTTP_PORT}' 
 		 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
+		 -ssh-port '${DEFAULT_KVM_HOST_SSHD_PORT}'
 		 -pid-file '${DEFAULT_DIR_IMAGE}'/gvproxy.pid
 		 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log
 		 -deviceIP '${GVPROXY_DEVICEIP}'
@@ -1270,7 +1272,7 @@ else
 					echo "Incorrect specification of ports in this '${PORT_TO_OPEN}'"
 					exit 1
 				fi
-				PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_HOST}'"}'
+				PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_VM}'"}'
 				curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/expose -X POST -d "${PORT_JSON}"
 				PORT_ID=$((${PORT_ID}+1))
 			done
@@ -1317,9 +1319,7 @@ else
 		echo "Not implemented"
 		CMD_LINE=""
 	fi
-	echo "KRUNKITPID=${KRUNKITPID}"
 	wait ${KRUNKITPID}
-	kill %1
 fi
 
 exit 0
