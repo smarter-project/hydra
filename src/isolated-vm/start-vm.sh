@@ -738,10 +738,18 @@ EOF
 	then
 		if [ ${EXTERNAL_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
-			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+			if [ ${ENABLE_KRUNKIT} -eq 0 ]
+			then
+				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 EOF
+			else
+				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ bash,"-c","echo 'host0 /var/lib/kubelet virtiofs default 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo 'host1 /var/log/pods virtiofs default 0 0' >> /etc/fstab" ]
+EOF
+			fi
 		else
 			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p noauto,uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
@@ -769,10 +777,18 @@ EOF
 				exit 1
 			fi
 			VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
-			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+			if [ ${ENABLE_KRUNKIT} -eq 0 ]
+			then
+				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
 - [ mount, "host${MOUNT_ID}"]
 EOF
+			else
+				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} virtiofs default 0 0' >> /etc/fstab" ]
+- [ mount, "host${MOUNT_ID}"]
+EOF
+			fi
 			MOUNT_ID=$((${MOUNT_ID}+1))
 		done
 	fi
@@ -981,10 +997,16 @@ function check_mount_filesystems() {
 		VIRTFS_9P_SECURITY_MODEL="mapped"
 	fi
 	VIRTFS_9P=""
-	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 ]
+	if [ ${DISABLE_9P_KUBELET_MOUNTS} -eq 0 -a ${EXTERNAL_9P_KUBELET_MOUNTS} -eq 0 ]
 	then
-		VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0
+		if [ ${ENABLE_KRUNKIT} -eq 0 ]
+		then
+			VIRTFS_9P='-virtfs local,path='${DIR_K3S_VAR}/var/lib/kubelet',mount_tag=host0,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host0
  -virtfs local,path='${DIR_K3S_VAR}/var/log/pods',mount_tag=host1,security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host1'
+ 		else
+			VIRTFS_9P='--device virtio-fs,sharedDir='${DIR_K3S_VAR}/var/lib/kubelet',mountTag=host0
+ --device virtio-fs,sharedDir='${DIR_K3S_VAR}/var/log/pods',mountTag=host1'
+		fi
 	fi
 	if [ ! -z "${ADDITIONAL_9P_MOUNTS}" ]
 	then
@@ -1011,7 +1033,12 @@ function check_mount_filesystems() {
 				VIRTFS_9P=${VIRTFS_9P}'
 	 '
 			fi
-			VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID}
+			if [ ${ENABLE_KRUNKIT} -eq 0 ]
+			then
+				VIRTFS_9P=${VIRTFS_9P}'-virtfs local,path='${MOUNT_HOST}',mount_tag=host'${MOUNT_ID}',security_model='${VIRTFS_9P_SECURITY_MODEL}',id=host'${MOUNT_ID}
+			else
+				VIRTFS_9P='--device virtio-fs,sharedDir='${MOUNT_HOST}',mountTag=host'${MOUNT_ID}
+			fi
 			MOUNT_ID=$((${MOUNT_ID}+1))
 		done
 	fi
@@ -1294,7 +1321,8 @@ else
  --restful-uri tcp://localhost:'${KRUNKIT_HTTP_PORT}'
  --device virtio-net,unixSocketPath='${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock',mac=5a:94:ef:e4:0c:ee 
  --device virtio-vsock,port=1025,socketURL='${DEFAULT_DIR_IMAGE}/krunkit.sock',listen 
- --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen'
+ --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen
+ '${VIRTFS_9P}
 
 		if [ ! -z "${APPEND}" ]
 		then
