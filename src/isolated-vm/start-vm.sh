@@ -23,6 +23,9 @@ esac
 [ ${DEBUG:=0} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
+: ${ENABLE_KRUNKIT:=0}
+: ${KRUNKIT_HTTP_PORT:=61800}
+: ${GVPROXY_HTTP_PORT:=61801}
 : ${ADDITIONAL_KERNEL_COMMANDLINE:=""}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
 : ${DISABLE_CONTAINERD_CSI_PROXY:=0}
@@ -46,6 +49,7 @@ esac
 : ${KERNEL_VERSION:=""}
 [ ! -z "${DEFAULT_KERNEL_VERSION}" ] && : ${KERNEL_VERSION:="linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}"}
 : ${DEFAULT_DIR_IMAGE:=$(pwd)/image}
+: ${DEFAULT_DIR_TMP_SOCKET:=/tmp/image-$$}
 : ${DEFAULT_DIR_K3S_VAR_DARWIN:=$(pwd)/k3s-var}
 : ${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT:=$(pwd)/k3s-var}
 : ${DEFAULT_DIR_K3S_VAR_LINUX_ROOT:=""}
@@ -100,8 +104,10 @@ esac
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="initramfs.linux_arm64.cpio"}
 : ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
 : ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
+: ${DEFAULT_GVPROXY:="../../../gvisor-tap-vsock/bin/gvproxy"}
 
 IMAGE_RESTART=0
+BIOS_OPTION=""
 
 function check_requirements() {
 	ERROR_STR=""
@@ -361,7 +367,7 @@ function check_kvm_memory_cpu() {
 		: ${KVM_BIOS:=${DEFAULT_KVM_DARWIN_BIOS}}
 		: ${KVM_BIOS_VAR:=${DEFAULT_KVM_DARWIN_BIOS_VAR}}
 		: ${KVM_MACHINE_TYPE:="virt"}
-		echo "Using Darwin QEMU machine ${KVM_MACHINE_TYPE} with ${KVM_CPU} CPUs and ${KVM_MEMORY}G"
+		echo "Using Darwin machine ${KVM_MACHINE_TYPE} with ${KVM_CPU} CPUs and ${KVM_MEMORY}G"
 		return
 	else
 		: ${KVM_CPU:=${DEFAULT_KVM_UNKNOWN_CPU}}
@@ -831,12 +837,38 @@ EOF
 }
 
 function check_ports_redirection() {
-	REDIRECT_PORT=""
-	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_SSHD_PORT}-:22"
-	[ ${DISABLE_CONTAINERD_CSI_PROXY} -gt 0 -o -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_CONTAINERD_PORT}-:35000"
-	[ ${ENABLE_K3S_DIOD} -eq 0 -o -z "${DEFAULT_KVM_HOST_DIOD_PORT}" ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_DIOD_PORT}-:564"
-	[ -z "${DEFAULT_KVM_HOST_RIMD_PORT}" -o ${RUN_BARE_KERNEL} -eq 0 ] || REDIRECT_PORT="${REDIRECT_PORT},hostfwd=tcp:0.0.0.0:${DEFAULT_KVM_HOST_RIMD_PORT}-:35001"
-
+	[ -z "${DEFAULT_KVM_HOST_SSHD_PORT}" ] || {
+		if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ] 
+		then
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_HOST_SSHD_PORT}:22"
+		else
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_PORTS_REDIRECT};${DEFAULT_KVM_HOST_SSHD_PORT}:22"
+		fi
+	}
+	[ ${DISABLE_CONTAINERD_CSI_PROXY} -gt 0 -o -z "${DEFAULT_KVM_HOST_CONTAINERD_PORT}" ] || {
+		if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ] 
+		then
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_HOST_CONTAINERD_PORT}:35000"
+		else
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_PORTS_REDIRECT};${DEFAULT_KVM_HOST_CONTAINERD_PORT}:35000"
+		fi
+	}
+	[ ${ENABLE_K3S_DIOD} -eq 0 -o -z "${DEFAULT_KVM_HOST_DIOD_PORT}" ] || {
+		if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ] 
+		then
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_HOST_DIOD_PORT}:564"
+		else
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_PORTS_REDIRECT};${DEFAULT_KVM_HOST_DIOD_PORT}:564"
+		fi
+	}
+	[ -z "${DEFAULT_KVM_HOST_RIMD_PORT}" -o ${RUN_BARE_KERNEL} -eq 0 ] || {
+		if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ] 
+		then
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_HOST_RIMD_PORT}:35001"
+		else
+		       	DEFAULT_KVM_PORTS_REDIRECT="${DEFAULT_KVM_PORTS_REDIRECT};${DEFAULT_KVM_HOST_RIMD_PORT}:35001"
+		fi
+	}
 	if [ -z "${DEFAULT_KVM_PORTS_REDIRECT}" ]
 	then
 		return
@@ -846,6 +878,11 @@ function check_ports_redirection() {
 		echo "Incorrect format for DEFAULT_KVM_PORTS_REDIRECT. It should be either empty, <Port externali>:<Port internal> or sequence of redirects separated by ;."
 		exit -1
 	fi
+	if [ ${ENABLE_KRUNKIT} -gt 0 ]
+	then
+		return
+	fi
+	REDIRECT_PORT=""
 	REDIRECTS=${DEFAULT_KVM_PORTS_REDIRECT//;/ }
 	for REDIRECT in ${REDIRECTS}
 	do
@@ -913,7 +950,6 @@ function check_k3s_log_pods_dir() {
 }
 
 function check_if_bios_needed() {
-	BIOS_OPTION=""
 	if [ -z "${KVM_BIOS}" ]
 	then
 		return
@@ -1012,9 +1048,48 @@ function check_if_9p_remote_local_bare_kernel(){
 	fi
 }
 
+function create_tmp_socket_krunkit(){
+	if [  -d "${DEFAULT_DIR_TMP_SOCKET}" ]
+	then
+		echo "Image directory '${DEFAULT_DIR_TMP_SOCKET}' exists, removing"
+		rm -rf "${DEFAULT_DIR_TMP_SOCKET}" || true
+	else
+		echo "Image directory '${DEFAULT_DIR_TMP_SOCKET}' does not exist, trying to create"
+	fi
+	mkdir -p "${DEFAULT_DIR_TMP_SOCKET}" || exit $?
+	if [ $? -ne 0 ]
+	then
+		echo "Image directory '${DEFAULT_DIR_TMP_SOCKET}' could not be created, bailing out"
+		exit 1
+	fi
+}
+
+function krunkitcleanup()
+{
+	echo "KRUNKITPID=${KRUNKITPID}"
+	kill ${KRUNKITPID} %1
+}
+
 # ----- Main -------------------------------------------------------------------------------------
 
-check_requirements qemu-system-${ARCH_M}
+if [ ${ENABLE_KRUNKIT} -eq 0 ]
+then
+	# Using QEMU
+	check_requirements qemu-system-${ARCH_M}
+
+	check_kvm_memory_cpu
+
+	check_kvm_version
+
+	check_kvm_kvm_hvf
+
+	check_if_bios_needed
+else
+	check_requirements krunkit "${DEFAULT_GVPROXY}"
+
+	check_kvm_memory_cpu
+fi
+
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
 	if [ ${OS} == "Darwin" ]
@@ -1025,11 +1100,7 @@ then
 	fi
 fi
 
-check_kvm_version
-
 check_ports_redirection
-
-check_kvm_kvm_hvf
 
 check_image_directory
 
@@ -1051,7 +1122,6 @@ fi
 
 check_k3s_log_pods_dir
 
-check_kvm_memory_cpu
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
@@ -1060,17 +1130,17 @@ else
 	resize_kvm_image "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
 fi
 
-check_if_bios_needed
-
 check_mount_filesystems
 
 check_gpu_options
 
 APPEND=""
 
-if [ ${RUN_BARE_KERNEL} -eq 0 ]
+if [ ${ENABLE_KRUNKIT} -eq 0 ]
 then
-	CMD_LINE='qemu-system-'${ARCH_M}'
+	if [ ${RUN_BARE_KERNEL} -eq 0 ]
+	then
+		CMD_LINE='qemu-system-'${ARCH_M}'
  -m '${KVM_MEMORY}'g
  -smp '${KVM_CPU}'
  -M '${KVM_MACHINE_TYPE}'
@@ -1086,13 +1156,13 @@ then
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
  '${KVM_NOGRAPHIC}
-else
-	check_if_vsock_device_enabled
-	check_if_9p_remote_local_bare_kernel
-	APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
-	APPEND="-append"
+	else
+		check_if_vsock_device_enabled
+		check_if_9p_remote_local_bare_kernel
+		APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
+		APPEND="-append"
 
-	CMD_LINE='qemu-system-'${ARCH_M}'
+		CMD_LINE='qemu-system-'${ARCH_M}'
  -m '${KVM_MEMORY}'g
  -M '${KVM_MACHINE_TYPE}',gic-version=max
  -smp '${KVM_CPU}'
@@ -1111,24 +1181,145 @@ else
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
  '${KVM_NOGRAPHIC}
-# -serial mon:stdio
-fi
+	# -serial mon:stdio
+	fi
 
-if [ ! -z "${APPEND}" ]
-then
-	echo "${CMD_LINE}
-  ${APPEND} ${APPEND_OPTIONS}"
+	if [ ! -z "${APPEND}" ]
+	then
+		echo "${CMD_LINE}
+	  ${APPEND} ${APPEND_OPTIONS}"
+	else
+		echo "${CMD_LINE}"
+	fi
+
+	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
+
+	if [ ! -z "${APPEND}" ]
+	then
+		exec ${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"
+	else
+		exec ${CMD_LINE}
+	fi
 else
-	echo "${CMD_LINE}"
-fi
+	if [ ${RUN_BARE_KERNEL} -eq 0 ]
+	then
+		create_tmp_socket_krunkit
 
-[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
+		trap krunkitcleanup EXIT
 
-if [ ! -z "${APPEND}" ]
-then
-	exec ${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"
-else
-	exec ${CMD_LINE}
+		GVPROXY_NETWORKPREFIX="10.0.2"
+		GVPROXY_NETWORK=${GVPROXY_NETWORKPREFIX}".0/24"
+		GVPROXY_HOSTIP=${GVPROXY_NETWORKPREFIX}".2"
+		GVPROXY_GATEWAYIP=${GVPROXY_NETWORKPREFIX}".2"
+		GVPROXY_DEVICEIP=${GVPROXY_NETWORKPREFIX}".15"
+
+		rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
+
+		GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
+		 -debug 
+		 -mtu 1500 
+		 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
+		 -ssh-port '${GVPROXY_HTTP_PORT}' 
+		 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
+		 -pid-file '${DEFAULT_DIR_IMAGE}'/gvproxy.pid
+		 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log
+		 -deviceIP '${GVPROXY_DEVICEIP}'
+		 -gatewayIP '${GVPROXY_GATEWAYIP}'
+		 -hostIP '${GVPROXY_HOSTIP}'
+		 -subnetIP '${GVPROXY_NETWORK}
+
+		echo "${GVPROXYCMDLINE}"
+
+		${GVPROXYCMDLINE}&
+
+		echo "Waiting for gvproxy"
+		sleep 2
+		
+		GVPROXY_PID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid")
+		if [ -z ${GVPROXY_PID} ]
+		then
+			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+			exit 1
+		fi
+		GVPROXY_RUNNING=$(ps -efp ${GVPROXY_PID} || true)
+		if [ -z "${GVPROXY_RUNNING}" ]
+		then
+			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+			exit 1
+		fi
+
+		[ ${DRY_RUN_ONLY} -eq 0 ] && {
+			${GVPROXYCMDLINE} &
+
+
+			PORTS_TO_OPEN="${DEFAULT_KVM_PORTS_REDIRECT}"
+			PORT_ID=100
+			PORTS_JSON=""
+			while [ ! -z "${PORTS_TO_OPEN}" ]
+			do
+				PORT_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 1)
+				PORTS_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 2-)
+				if [ "${PORT_TO_OPEN}" == "${PORTS_TO_OPEN}" ]
+				then
+					PORTS_TO_OPEN=""
+				fi
+				PORT_HOST=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 1)
+				PORT_VM=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 2)
+				if [ -z "${PORT_HOST}" -o -z "${PORT_HOST}" ]
+				then
+					echo "Incorrect specification of ports in this '${PORT_TO_OPEN}'"
+					exit 1
+				fi
+				PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_HOST}'"}'
+				curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/expose -X POST -d "${PORT_JSON}"
+				PORT_ID=$((${PORT_ID}+1))
+			done
+
+			echo "Ports configured on gvproxy, below is a list of enabled ports"
+
+			curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/all | jq .
+		}
+
+		IMAGE_FORMAT=qcow2
+		CMD_LINE='krunkit 
+ --krun-log-level 3 
+ --cpus '${KVM_CPU}'
+ --memory '$((${KVM_MEMORY}*1024))'
+ --bootloader efi,variable-store='${DEFAULT_DIR_IMAGE}/efi-bl-krunkit,create' 
+ --device virtio-blk,path='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',format='${IMAGE_FORMAT}'
+ --device virtio-blk,path='${DEFAULT_DIR_IMAGE}/cloud-init.iso',format=raw 
+ --device virtio-rng 
+ --restful-uri tcp://localhost:'${KRUNKIT_HTTP_PORT}'
+ --device virtio-net,unixSocketPath='${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock',mac=5a:94:ef:e4:0c:ee 
+ --device virtio-vsock,port=1025,socketURL='${DEFAULT_DIR_IMAGE}/krunkit.sock',listen 
+ --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen'
+
+		if [ ! -z "${APPEND}" ]
+		then
+			echo "${CMD_LINE}
+		  ${APPEND} ${APPEND_OPTIONS}"
+		else
+			echo "${CMD_LINE}"
+		fi
+
+		[ ${DRY_RUN_ONLY} -eq 0 ] && {
+
+			if [ ! -z "${APPEND}" ]
+			then
+				${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"&
+				KRUNKITPID=$!
+			else
+				${CMD_LINE}&
+				KRUNKITPID=$!
+			fi
+		}
+	else
+		echo "Not implemented"
+		CMD_LINE=""
+	fi
+	echo "KRUNKITPID=${KRUNKITPID}"
+	wait ${KRUNKITPID}
+	kill %1
 fi
 
 exit 0

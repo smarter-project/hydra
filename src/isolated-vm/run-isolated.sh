@@ -1,7 +1,7 @@
 #!/bin/bash
 
 : ${VM_HOSTNAME:="hydra-isolated"}
-: ${ DEFAULT_DIR_IMAGE:="$(pwd)/image-hydra-isolated"}
+: ${DEFAULT_DIR_IMAGE:="$(pwd)/image-hydra-isolated"}
 : ${EXTERNAL_9P_KUBELET_MOUNTS:=1}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${DEFAULT_KVM_DISK_SIZE:=16}
