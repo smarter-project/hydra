@@ -171,6 +171,10 @@ THe following variables configures the script:
 | `DEFAULT_KVM_HOST_RIMD_PORT` | Host port to use for RIMD server on the VM | 35001 |
 | `DEFAULT_CSI_GRPC_PROXY_URL` | Where to get csi-grpc-proxy | `https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-` |
 | `K3S_VERSION_INSTALL` | Version of K3s to install | `v1.32.6+k3s1` |
+| `ENABLE_KRUNKIT` | Use krunkit instead of KVM | 0 |
+| `KRUNKIT_HTTP_PORT` | Port of HTTP interface of krunkit | 61800 |
+| `GVPROXY_HTTP_PORT` | Port of HTTP interface of gvproxy | 61801 |
+| `DEFAULT_DIR_TMP_SOCKET` | Directory to use for sockets (path < 100 bytes) | `/tmp/image-$$` |
 
 ### Crismux
 
