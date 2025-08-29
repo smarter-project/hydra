@@ -13,7 +13,7 @@
 : ${DEFAULT_KERNEL_VERSION:=""}
 : ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/trixie/20250814-2204"}
 #: ${INSTALL_ADDITIONAL_DEBS:="http://http.us.debian.org/debian/pool/main/l/linux/linux-image-6.16-arm64-unsigned_6.16.1-1~exp1_arm64.deb"}
-: ${ENABLE_REBOOT_AFTER_INSTALLATION:=1}
+: ${ENABLE_REBOOT_AFTER_INSTALLATION:=0}
 : ${COPY_IMAGE_BACKUP:=1}
 : ${ENABLE_KRUNKIT:=1}
 

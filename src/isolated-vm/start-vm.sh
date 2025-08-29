@@ -459,6 +459,12 @@ function validate_new_cloud_init() {
 }
 
 function cloud_init_create() {
+	MOUNT_FILESYSTEM="9P"
+	MOUNT_FILESYSTEM_OPTIONS="trans=virtio,version=9p2000.L"
+	[ ${ENABLE_KRUNKIT} -gt 0 ] && {
+		MOUNT_FILESYSTEM="virtiofs"
+		MOUNT_FILESYSTEM_OPTIONS="defaults"
+	}
 	if [ -d "${NEW_CLOUD_INIT_DIR}" ]
 	then
 		# If it exists it is leftover from a interrupted installation, so remove it
@@ -738,18 +744,10 @@ EOF
 	then
 		if [ ${EXTERNAL_9P_KUBELET_MOUNTS} -eq 0 ]
 		then
-			if [ ${ENABLE_KRUNKIT} -eq 0 ]
-			then
-				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ bash,"-c","echo 'host0 /var/lib/kubelet 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
-- [ bash,"-c","echo 'host1 /var/log/pods 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
+			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ bash,"-c","echo 'host0 /var/lib/kubelet ${MOUNT_FILESYSTEM} ${MOUNT_FILESYSTEM_OPTIONS} 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo 'host1 /var/log/pods ${MOUNT_FILESYSTEM} ${MOUNT_FILESYSTEM_OPTIONS} 0 0' >> /etc/fstab" ]
 EOF
-			else
-				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ bash,"-c","echo 'host0 /var/lib/kubelet virtiofs default 0 0' >> /etc/fstab" ]
-- [ bash,"-c","echo 'host1 /var/log/pods virtiofs default 0 0' >> /etc/fstab" ]
-EOF
-			fi
 		else
 			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p noauto,uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
@@ -777,18 +775,10 @@ EOF
 				exit 1
 			fi
 			VM_MOUNT_POINTS="${VM_MOUNT_POINTS},\"${MOUNT_VM}\""
-			if [ ${ENABLE_KRUNKIT} -eq 0 ]
-			then
-				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} 9p trans=virtio,version=9p2000.L 0 0' >> /etc/fstab" ]
+			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} ${MOUNT_FILESYSTEM} ${MOUNT_FILESYSTEM_OPTIONS} 0 0' >> /etc/fstab" ]
 - [ mount, "host${MOUNT_ID}"]
 EOF
-			else
-				cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ bash,"-c","echo 'host${MOUNT_ID} ${MOUNT_VM} virtiofs default 0 0' >> /etc/fstab" ]
-- [ mount, "host${MOUNT_ID}"]
-EOF
-			fi
 			MOUNT_ID=$((${MOUNT_ID}+1))
 		done
 	fi
@@ -1093,10 +1083,9 @@ function create_tmp_socket_krunkit(){
 
 function krunkitcleanup()
 {
-	echo "killing all processes ${KRUNKITPID}"
-	kill ${KRUNKITPID} %1 2>/dev/null || true
-	wait ${KRUNKITPID} %1 2>/dev/null || true
-	sleep 10
+	echo "killing all processes krunkit (${KRUNKITPID}) and gvproxy (${GVPROXYPID})"
+	kill ${KRUNKITPID} ${GVPROXYPID} 2>/dev/null || true
+	wait ${KRUNKITPID} ${GVPROXYPID} 2>/dev/null || true
 }
 
 # ----- Main -------------------------------------------------------------------------------------
@@ -1259,27 +1248,25 @@ else
 
 		echo "${GVPROXYCMDLINE}"
 
-		${GVPROXYCMDLINE}&
-
-		echo "Waiting for gvproxy"
-		sleep 2
-		
-		GVPROXY_PID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid")
-		if [ -z ${GVPROXY_PID} ]
-		then
-			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
-			exit 1
-		fi
-		GVPROXY_RUNNING=$(ps -efp ${GVPROXY_PID} || true)
-		if [ -z "${GVPROXY_RUNNING}" ]
-		then
-			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
-			exit 1
-		fi
 
 		[ ${DRY_RUN_ONLY} -eq 0 ] && {
-			${GVPROXYCMDLINE} &
+			${GVPROXYCMDLINE}&
 
+			echo "Waiting for gvproxy"
+			sleep 2
+
+			GVPROXYPID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid")
+			if [ -z ${GVPROXYPID} ]
+			then
+				echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+				exit 1
+			fi
+			GVPROXY_RUNNING=$(ps -efp ${GVPROXYPID} || true)
+			if [ -z "${GVPROXY_RUNNING}" ]
+			then
+				echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+				exit 1
+			fi
 
 			PORTS_TO_OPEN="${DEFAULT_KVM_PORTS_REDIRECT}"
 			PORT_ID=100
@@ -1342,12 +1329,12 @@ else
 				${CMD_LINE}&
 				KRUNKITPID=$!
 			fi
+			wait ${KRUNKITPID}
 		}
 	else
 		echo "Not implemented"
 		CMD_LINE=""
 	fi
-	wait ${KRUNKITPID}
 fi
 
 exit 0
