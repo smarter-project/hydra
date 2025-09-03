@@ -62,7 +62,7 @@ esac
 : ${DEFAULT_KVM_UNKNOWN_CPU:=2}
 : ${DEFAULT_KVM_UNKNOWN_MEMORY:=8}
 : ${DEFAULT_KVM_DISK_SIZE:=3}
-: ${PIDFILE:=$(pwd)/hydra.pid}
+: ${PIDFILE:=${DEFAULT_DIR_IMAGE}/hydra.pid}
 [ ${OS} == "Darwin" ] && {
 	: ${DEFAULT_KVM_DARWIN_BIOS:=$(ls -t /opt/homebrew/Cellar/qemu/*/share/qemu/edk2-${ARCH_M}-code.fd 2>/dev/null | head -n 1)}
 	: ${DEFAULT_KVM_DARWIN_BIOS_VAR:=""}
@@ -1234,7 +1234,6 @@ else
 		rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
 
 		GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
-		 -debug 
 		 -mtu 1500 
 		 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
 		 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
