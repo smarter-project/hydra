@@ -95,12 +95,14 @@ esac
 : ${DEFAULT_KVM_HOST_RIMD_PORT:="35001"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
-: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/packages/generic/rimdworkspace/v1.0.1/rimdworkspace.tar.gz"}
+: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/packages/generic/rimdworkspace/Q2_2025_6/rimdworkspace.tar.gz"}
+: ${DEFAULT_RIMD_ARTIFACT_DIR:="rimdworkspace_Q2_2025_6/image-hydra-isolated-bare"}
 : ${RIMD_ARTIFACT_URL_USER:=""}
 : ${RIMD_ARTIFACT_URL_PASS:=""}
 : ${RIMD_ARTIFACT_URL_TOKEN:=""}
 : ${DEFAULT_RIMD_ARTIFACT_FILENAME:="rimdworkspace.tar.gz"}
 : ${DEFAULT_RIMD_KERNEL_FILENAME:="Image.gz"}
+: ${DEFAULT_RIMD_KERNEL_VERSION:="6.12"}
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="initramfs.linux_arm64.cpio"}
 : ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
 : ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
@@ -262,15 +264,31 @@ function check_image_exists() {
 }
 
 function check_kernel_image() {
-	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}" \
-		-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
-		-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+	RIMD_KERNEL_FILENAME=${DEFAULT_RIMD_KERNEL_FILENAME}
+	[ ! -z ${DEFAULT_RIMD_KERNEL_VERSION} ] && RIMD_KERNEL_FILENAME="${RIMD_KERNEL_FILENAME}.${DEFAULT_RIMD_KERNEL_VERSION}"
+	if [ ${IMAGE_RESTART} -eq 0 ]
 	then
-		return
+		if [ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" \
+			-a -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
+			-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
+			-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+		then
+			if [ ${ENABLE_KRUNKIT} -eq 0 ]
+			then
+				echo "Reusing since all the artifacts and original downloaded files exist on ${DEFAULT_DIR_IMAGE}: ${DEFAULT_RIMD_ARTIFACT_FILENAME} ${RIMD_KERNEL_FILENAME} ${DEFAULT_RIMD_IMAGE_FILENAME} ${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
+				return
+			fi
+			if [ -d "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" \
+				-a -f "${DEFAULT_DIR_IMAGE}/rimd.raw" ]
+			then
+				echo "Reusing since all the artifacts and original downloaded files exist on ${DEFAULT_DIR_IMAGE}: ${DEFAULT_RIMD_ARTIFACT_FILENAME} ${RIMD_KERNEL_FILENAME} ${DEFAULT_RIMD_IMAGE_FILENAME} ${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
+				return
+			fi
+		fi
 	fi
 	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" ]
 	then
-		echo "Image ${DEFAULT_RIMD_ARTIFACT_FILENAME} exists on disk, reusing"
+		echo "Downloaded artifact ${DEFAULT_RIMD_ARTIFACT_FILENAME} already exists on disk, reusing"
 	else
 		echo "Download image from ${DEFAULT_RIMD_ARTIFACT_URL}"
 		USER_ID="-nv"
@@ -297,6 +315,7 @@ function check_kernel_image() {
 		fi
 		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
 	fi
+	echo "Processing artifact ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 	if [[ ${DEFAULT_RIMD_ARTIFACT_FILENAME} =~ ^.*\.zip$ ]]
 	then
 		unzip -o -d "${DEFAULT_DIR_IMAGE}" -x "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}"
@@ -307,6 +326,49 @@ function check_kernel_image() {
 		echo "File termination unknown so unable to unpack it, bailing out"
 		exit 1
 	fi
+	if [ ! -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
+	     -o ! -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
+	     -o ! -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+	then
+		# File was opened but artifacts are in a subdirectory, lets try to get them from there
+		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${RIMD_KERNEL_FILENAME}" "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" || {
+			echo "File ${RIMD_KERNEL_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
+			exit 1
+		}
+		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" || {
+			echo "File ${DEFAULT_RIMD_IMAGE_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
+			exit 1
+		}
+		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" || {
+			echo "File ${DEFAULT_RIMD_FILESYSTEM_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
+			exit 1
+		}
+	fi
+
+	if [ ${ENABLE_KRUNKIT} -eq 0 ]
+	then
+		return
+	fi
+
+	echo "Creating filesystem for booting on krunkit (rw image with EFI)"
+	if [ ! -d "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" ]
+	then
+		echo "Filesystem directory does not exist, creating it"
+		mkdir -p "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" 
+		echo "Copying EFI + grub (debian)"
+		tar -xf EFI_GRUB_RIMD.tar.gz -C "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" >/dev/null
+		echo "Copying kernel + initramfs"
+		cp "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/Image.gz"
+		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/initramfs.linux_arm64.cpio" 
+	fi
+
+	sed -i -e 's{\(linux[^/]*/[^ ]*\).*${\1 ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off ENABLE_SSH=true '${EXTRA_APPEND}' '${ADDITIONAL_KERNEL_COMMANDLINE}'{' ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg 
+
+	#cat  ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg
+
+	echo "Creating raw filesystem"
+	hdiutil create -srcfolder ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem -layout GPTSPUD -volname EFI -fs FAT32 -format UDTO ${DEFAULT_DIR_IMAGE}/rimd || exit 1
+	mv ${DEFAULT_DIR_IMAGE}/rimd.cdr ${DEFAULT_DIR_IMAGE}/rimd.raw
 }
 
 function check_kvm_version() {
@@ -1135,6 +1197,8 @@ then
 
 	check_image_exists
 else
+	check_if_9p_remote_local_bare_kernel
+	check_if_vsock_device_enabled
 	check_kernel_image
 fi
 
@@ -1175,9 +1239,7 @@ then
  '${VIRTIO_GPU}'
  '${KVM_NOGRAPHIC}
 	else
-		check_if_vsock_device_enabled
-		check_if_9p_remote_local_bare_kernel
-		APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
+		APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ENABLE_SSH=true ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
 		APPEND="-append"
 
 		CMD_LINE='qemu-system-'${ARCH_M}'
@@ -1188,7 +1250,7 @@ then
  -pidfile '${PIDFILE}'
  -cpu '${KVM_CPU_TYPE}'
  '${BIOS_OPTION}'
- -kernel '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_KERNEL_FILENAME}'
+ -kernel '${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}'
  -netdev user,id=n1'${REDIRECT_PORT}'
  -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca
  '${VSOCK_DEVICE}'
@@ -1219,88 +1281,89 @@ then
 		exec ${CMD_LINE}
 	fi
 else
-	if [ ${RUN_BARE_KERNEL} -eq 0 ]
-	then
-		create_tmp_socket_krunkit
+	create_tmp_socket_krunkit
+
+
+	GVPROXY_NETWORKPREFIX="10.0.2"
+	GVPROXY_NETWORK=${GVPROXY_NETWORKPREFIX}".0/24"
+	GVPROXY_HOSTIP=${GVPROXY_NETWORKPREFIX}".2"
+	GVPROXY_GATEWAYIP=${GVPROXY_NETWORKPREFIX}".2"
+	GVPROXY_DEVICEIP=${GVPROXY_NETWORKPREFIX}".15"
+
+	rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
+
+	GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
+	 -mtu 1500 
+	 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
+	 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
+	 -ssh-port '${DEFAULT_KVM_HOST_SSHD_PORT}'
+	 -pid-file '${DEFAULT_DIR_IMAGE}'/gvproxy.pid
+	 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log
+	 -deviceIP '${GVPROXY_DEVICEIP}'
+	 -gatewayIP '${GVPROXY_GATEWAYIP}'
+	 -hostIP '${GVPROXY_HOSTIP}'
+	 -subnetIP '${GVPROXY_NETWORK}
+
+	echo "${GVPROXYCMDLINE}"
+
+	[ ${DRY_RUN_ONLY} -eq 0 ] && {
+		${GVPROXYCMDLINE}&
+
+		echo "Waiting for gvproxy"
+		sleep 2
+
+		GVPROXYPID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid" 2>/dev/null || true)
+		if [ -z ${GVPROXYPID} ]
+		then
+			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+			exit 1
+		fi
+		GVPROXY_RUNNING=$(ps -efp ${GVPROXYPID} || true)
+		if [ -z "${GVPROXY_RUNNING}" ]
+		then
+			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+			exit 1
+		fi
 
 		trap krunkitcleanup EXIT
 
-		GVPROXY_NETWORKPREFIX="10.0.2"
-		GVPROXY_NETWORK=${GVPROXY_NETWORKPREFIX}".0/24"
-		GVPROXY_HOSTIP=${GVPROXY_NETWORKPREFIX}".2"
-		GVPROXY_GATEWAYIP=${GVPROXY_NETWORKPREFIX}".2"
-		GVPROXY_DEVICEIP=${GVPROXY_NETWORKPREFIX}".15"
-
-		rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
-
-		GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
-		 -mtu 1500 
-		 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
-		 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
-		 -ssh-port '${DEFAULT_KVM_HOST_SSHD_PORT}'
-		 -pid-file '${DEFAULT_DIR_IMAGE}'/gvproxy.pid
-		 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log
-		 -deviceIP '${GVPROXY_DEVICEIP}'
-		 -gatewayIP '${GVPROXY_GATEWAYIP}'
-		 -hostIP '${GVPROXY_HOSTIP}'
-		 -subnetIP '${GVPROXY_NETWORK}
-
-		echo "${GVPROXYCMDLINE}"
-
-
-		[ ${DRY_RUN_ONLY} -eq 0 ] && {
-			${GVPROXYCMDLINE}&
-
-			echo "Waiting for gvproxy"
-			sleep 2
-
-			GVPROXYPID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid")
-			if [ -z ${GVPROXYPID} ]
+		PORTS_TO_OPEN="${DEFAULT_KVM_PORTS_REDIRECT}"
+		PORT_ID=100
+		PORTS_JSON=""
+		while [ ! -z "${PORTS_TO_OPEN}" ]
+		do
+			PORT_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 1)
+			PORTS_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 2-)
+			if [ "${PORT_TO_OPEN}" == "${PORTS_TO_OPEN}" ]
 			then
-				echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+				PORTS_TO_OPEN=""
+			fi
+			PORT_HOST=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 1)
+			PORT_VM=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 2)
+			if [ -z "${PORT_HOST}" -o -z "${PORT_HOST}" ]
+			then
+				echo "Incorrect specification of ports in this '${PORT_TO_OPEN}'"
 				exit 1
 			fi
-			GVPROXY_RUNNING=$(ps -efp ${GVPROXYPID} || true)
-			if [ -z "${GVPROXY_RUNNING}" ]
-			then
-				echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
-				exit 1
-			fi
+			PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_VM}'"}'
+			curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/expose -X POST -d "${PORT_JSON}"
+			PORT_ID=$((${PORT_ID}+1))
+		done
 
-			PORTS_TO_OPEN="${DEFAULT_KVM_PORTS_REDIRECT}"
-			PORT_ID=100
-			PORTS_JSON=""
-			while [ ! -z "${PORTS_TO_OPEN}" ]
-			do
-				PORT_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 1)
-				PORTS_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 2-)
-				if [ "${PORT_TO_OPEN}" == "${PORTS_TO_OPEN}" ]
-				then
-					PORTS_TO_OPEN=""
-				fi
-				PORT_HOST=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 1)
-				PORT_VM=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 2)
-				if [ -z "${PORT_HOST}" -o -z "${PORT_HOST}" ]
-				then
-					echo "Incorrect specification of ports in this '${PORT_TO_OPEN}'"
-					exit 1
-				fi
-				PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_VM}'"}'
-				curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/expose -X POST -d "${PORT_JSON}"
-				PORT_ID=$((${PORT_ID}+1))
-			done
+		echo "Ports configured on gvproxy, below is a list of enabled ports"
 
-			echo "Ports configured on gvproxy, below is a list of enabled ports"
+		curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/all | jq .
+	}
 
-			curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/all | jq .
-		}
-
+	if [ ${RUN_BARE_KERNEL} -eq 0 ]
+	then
 		IMAGE_FORMAT=qcow2
 		CMD_LINE='krunkit 
  --krun-log-level 3 
  --cpus '${KVM_CPU}'
  --memory '$((${KVM_MEMORY}*1024))'
  --bootloader efi,variable-store='${DEFAULT_DIR_IMAGE}/efi-bl-krunkit,create' 
+ --device virtio-serial,logFilePath='${DEFAULT_DIR_IMAGE}/vm-output.log'
  --device virtio-blk,path='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',format='${IMAGE_FORMAT}'
  --device virtio-blk,path='${DEFAULT_DIR_IMAGE}/cloud-init.iso',format=raw 
  --device virtio-rng 
@@ -1309,31 +1372,45 @@ else
  --device virtio-vsock,port=1025,socketURL='${DEFAULT_DIR_IMAGE}/krunkit.sock',listen 
  --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen
  '${VIRTFS_9P}
+ #--device virtio-blk,path='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',format='${IMAGE_FORMAT}'
+	else
+		IMAGE_FORMAT=raw
+		CMD_LINE='krunkit 
+ --krun-log-level 3 
+ --cpus '${KVM_CPU}'
+ --memory '$((${KVM_MEMORY}*1024))'
+ --bootloader efi,variable-store='${DEFAULT_DIR_IMAGE}/efi-bl-krunkit,create' 
+ --device virtio-serial,logFilePath='${DEFAULT_DIR_IMAGE}/vm-output.log'
+ --device virtio-blk,path='${DEFAULT_DIR_IMAGE}/rimd.raw',format='${IMAGE_FORMAT}'
+ --device virtio-blk,path='${DEFAULT_DIR_IMAGE}/something.qcow2',format=qcow2
+ --device virtio-rng 
+ --restful-uri tcp://localhost:'${KRUNKIT_HTTP_PORT}'
+ --device virtio-net,unixSocketPath='${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock',mac=5a:94:ef:e4:0c:ee 
+ --device virtio-vsock,port=1025,socketURL='${DEFAULT_DIR_IMAGE}/krunkit.sock',listen 
+ --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen
+ '${VIRTFS_9P}
+ 	fi
+
+	if [ ! -z "${APPEND}" ]
+	then
+		echo "${CMD_LINE}
+	  ${APPEND} ${APPEND_OPTIONS}"
+	else
+		echo "${CMD_LINE}"
+	fi
+
+	[ ${DRY_RUN_ONLY} -eq 0 ] && {
 
 		if [ ! -z "${APPEND}" ]
 		then
-			echo "${CMD_LINE}
-		  ${APPEND} ${APPEND_OPTIONS}"
+			${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"&
+			KRUNKITPID=$!
 		else
-			echo "${CMD_LINE}"
+			${CMD_LINE}&
+			KRUNKITPID=$!
 		fi
-
-		[ ${DRY_RUN_ONLY} -eq 0 ] && {
-
-			if [ ! -z "${APPEND}" ]
-			then
-				${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"&
-				KRUNKITPID=$!
-			else
-				${CMD_LINE}&
-				KRUNKITPID=$!
-			fi
-			wait ${KRUNKITPID}
-		}
-	else
-		echo "Not implemented"
-		CMD_LINE=""
-	fi
+		wait ${KRUNKITPID}
+	}
 fi
 
 exit 0

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# If using vulkan acceleration use the default kernel but if use SME uncomment this line, only on 6.16 kernel SME works well.
+#: ${INSTALL_ADDITIONAL_DEBS:="http://http.us.debian.org/debian/pool/main/l/linux/linux-image-6.16-arm64-unsigned_6.16.1-1~exp1_arm64.deb"}
+
 : ${VM_HOSTNAME:="hydra-isolated-krun"}
 : ${DEFAULT_DIR_IMAGE:="$(pwd)/image-hydra-isolated-krun"}
 : ${EXTERNAL_9P_KUBELET_MOUNTS:=1}
@@ -12,7 +15,6 @@
 : ${DEFAULT_IMAGE:="debian-13-generic-arm64-20250814-2204.qcow2"}
 : ${DEFAULT_KERNEL_VERSION:=""}
 : ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/trixie/20250814-2204"}
-#: ${INSTALL_ADDITIONAL_DEBS:="http://http.us.debian.org/debian/pool/main/l/linux/linux-image-6.16-arm64-unsigned_6.16.1-1~exp1_arm64.deb"}
 : ${ENABLE_REBOOT_AFTER_INSTALLATION:=0}
 : ${COPY_IMAGE_BACKUP:=1}
 : ${ENABLE_KRUNKIT:=1}
