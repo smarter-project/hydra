@@ -24,6 +24,7 @@ esac
 : ${DRY_RUN_ONLY:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${ENABLE_KRUNKIT:=0}
+: ${ENABLE_VSOCK_LINUX:=0}
 : ${KRUNKIT_HTTP_PORT:=61800}
 : ${GVPROXY_HTTP_PORT:=61801}
 : ${ADDITIONAL_KERNEL_COMMANDLINE:=""}
@@ -1111,10 +1112,10 @@ function check_gpu_options() {
 }
 
 function check_if_vsock_device_enabled() {
-	VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
-	if [ "${OS}" == "Darwin" ]
-        then
-		VSOCK_DEVICE=""
+	VSOCK_DEVICE=""
+	if [ "${OS}" != "Darwin" -a ${ENABLE_VSOCK_LINUX} -gt 0 ]
+	then
+		VSOCK_DEVICE="-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3"
 	fi
 }
 
