@@ -113,6 +113,7 @@ THe following variables configures the script:
 | `ALWAYS_REUSE_DISK_IMAGE` | if > 0 reuse existing disk image even if configuration has changed | 0 |
 | `DEFAULT_KERNEL_VERSION` | kernel version to install | `6.12.12+bpo` |
 | `KERNEL_VERSION` | full version to install if a different kernel is required | `linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}` |
+| `ENABLE_VSOCK_LINUX` | Enable VSOCK for linux if > 0 | 0 |
 | `DEFAULT_DIR_IMAGE` | Where to store the downloaded image | `$(pwd)/image` |
 | `DEFAULT_DIR_K3S_VAR_DARWIN` | Where to point the 9p mounts if running on MacOS | `$(pwd)/k3s-var` |
 | `DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT` | Where to point the 9p mounts if running on Linux as a non-root user | `$(pwd)/k3s-var` |
