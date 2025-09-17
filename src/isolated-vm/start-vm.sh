@@ -75,6 +75,7 @@ esac
 case ${ARCH} in
 	amd64) 
 		: ${DEFAULT_KVM_LINUX_v7_BIOS:="/usr/share/ovmf/OVMF.fd"}
+		: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:=""}
 		#: ${DEFAULT_KVM_LINUX_v7_BIOS_VAR:="/usr/share/OVMF/OVMF_VARS.fd"}
 		;;
 	arm64)
@@ -1156,11 +1157,11 @@ function krunkitcleanup()
 if [ ${ENABLE_KRUNKIT} -eq 0 ]
 then
 	# Using QEMU
-	check_requirements qemu-system-${ARCH_M}
-
-	check_kvm_memory_cpu
+	check_requirements qemu-system-${ARCH_M} qemu-img
 
 	check_kvm_version
+
+	check_kvm_memory_cpu
 
 	check_kvm_kvm_hvf
 
