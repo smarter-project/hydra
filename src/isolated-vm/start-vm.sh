@@ -118,7 +118,7 @@ function check_requirements() {
 	for REQUIRED in $*
 	do
 		EXEC_LOCATION=$(type ${REQUIRED} 2>/dev/null || true)
-		[ $? -gt 0 -o -z "{EXEC_LOCATION}" ] && ERROR_STR="${ERROR_STR}${REQUIRED} not available, please install it\n"
+		[ $? -gt 0 -o -z "${EXEC_LOCATION}" ] && ERROR_STR="${ERROR_STR}${REQUIRED} not available, please install it\n"
 	done
 	if [ ! -z "${ERROR_STR}" ]
 	then
