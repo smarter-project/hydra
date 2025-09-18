@@ -1040,8 +1040,10 @@ function check_if_bios_needed() {
 		echo "Bios requested \"${KVM_BIOS_VAR}\" not found"
 		exit 1
 	fi
+	KVM_BIOS_VAR_LOCAL=$(basename "${KVM_BIOS_VAR}")
+	cp "${KVM_BIOS_VAR}" "${DEFAULT_DIR_IMAGE}/${KVM_BIOS_VAR_LOCAL}"
 	BIOS_OPTION="${BIOS_OPTION}
- -drive if=pflash,format=raw,file=${KVM_BIOS_VAR}"
+ -drive if=pflash,format=raw,file=${DEFAULT_DIR_IMAGE}/${KVM_BIOS_VAR_LOCAL}"
 }
 
 function check_mount_filesystems() {
