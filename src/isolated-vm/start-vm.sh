@@ -986,7 +986,7 @@ function check_ssh_authorized_key() {
 				;;
 		esac
 	fi
-	VM_SSH_AUTHORIZED_KEY=$(cat "${VM_SSH_KEY_FILENAME}")
+	VM_SSH_AUTHORIZED_KEY=$(cat "${VM_SSH_KEY_FILENAME}" 2>/dev/null || true)
 }
 
 function check_k3s_log_pods_dir() {
