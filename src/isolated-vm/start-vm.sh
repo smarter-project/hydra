@@ -1242,6 +1242,8 @@ then
  -cpu '${KVM_CPU_TYPE}'
  -drive if=none,format=qcow2,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',id=hd0
  -drive file='${DEFAULT_DIR_IMAGE}/cloud-init.iso',index=1,media=cdrom
+ -object rng-random,id=rng0,filename=/dev/urandom
+ -device virtio-rng-pci,rng=rng0,max-bytes=1048576,period=1000
  -device virtio-blk-pci,drive=hd0
  -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b
  -netdev user,id=net0'${REDIRECT_PORT}'
@@ -1263,6 +1265,8 @@ then
  -kernel '${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}'
  -netdev user,id=n1'${REDIRECT_PORT}'
  -device virtio-net-pci,netdev=n1,mac=52:54:00:94:33:ca
+ -object rng-random,id=rng0,filename=/dev/urandom
+ -device virtio-rng-pci,rng=rng0,max-bytes=1048576,period=1000
  '${VSOCK_DEVICE}'
  -initrd '${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}'
  -drive if=none,id=drive1,format=qcow2,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'
