@@ -98,13 +98,13 @@ esac
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
 : ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/packages/generic/rimdworkspace/Q2_2025_6/rimdworkspace.tar.gz"}
-: ${DEFAULT_RIMD_ARTIFACT_DIR:="rimdworkspace_Q2_2025_6/image-hydra-isolated-bare"}
+: ${DEFAULT_RIMD_ARTIFACT_DIR:="rimdworkspace_Q3_2025_1"}
 : ${RIMD_ARTIFACT_URL_USER:=""}
 : ${RIMD_ARTIFACT_URL_PASS:=""}
 : ${RIMD_ARTIFACT_URL_TOKEN:=""}
 : ${DEFAULT_RIMD_ARTIFACT_FILENAME:="rimdworkspace.tar.gz"}
 : ${DEFAULT_RIMD_KERNEL_FILENAME:="Image.gz"}
-: ${DEFAULT_RIMD_KERNEL_VERSION:="6.12"}
+: ${DEFAULT_RIMD_KERNEL_VERSION:="6.16"}
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="initramfs.linux_arm64.cpio"}
 : ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
 : ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
