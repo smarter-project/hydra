@@ -97,14 +97,14 @@ esac
 : ${DEFAULT_KVM_HOST_RIMD_PORT:="35001"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
-: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/576/packages/generic/rimdworkspace/Q2_2025_6/rimdworkspace.tar.gz"}
+: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/research%2Fsmarter%2Fedgeai%2Frimdworkspace/packages/generic/rimdworkspace/Q3_2025_1/rimdworkspace.tar.gz"}
 : ${DEFAULT_RIMD_ARTIFACT_DIR:="rimdworkspace_Q3_2025_1"}
 : ${RIMD_ARTIFACT_URL_USER:=""}
 : ${RIMD_ARTIFACT_URL_PASS:=""}
 : ${RIMD_ARTIFACT_URL_TOKEN:=""}
 : ${DEFAULT_RIMD_ARTIFACT_FILENAME:="rimdworkspace.tar.gz"}
 : ${DEFAULT_RIMD_KERNEL_FILENAME:="Image.gz"}
-: ${DEFAULT_RIMD_KERNEL_VERSION:="6.16"}
+: ${DEFAULT_RIMD_KERNEL_VERSION:="-6.16"}
 : ${DEFAULT_RIMD_IMAGE_FILENAME:="initramfs.linux_arm64.cpio"}
 : ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
 : ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
@@ -267,7 +267,7 @@ function check_image_exists() {
 
 function check_kernel_image() {
 	RIMD_KERNEL_FILENAME=${DEFAULT_RIMD_KERNEL_FILENAME}
-	[ ! -z ${DEFAULT_RIMD_KERNEL_VERSION} ] && RIMD_KERNEL_FILENAME="${RIMD_KERNEL_FILENAME}.${DEFAULT_RIMD_KERNEL_VERSION}"
+	[ ! -z ${DEFAULT_RIMD_KERNEL_VERSION} ] && RIMD_KERNEL_FILENAME="${RIMD_KERNEL_FILENAME}${DEFAULT_RIMD_KERNEL_VERSION}"
 	if [ ${IMAGE_RESTART} -eq 0 ]
 	then
 		if [ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" \
