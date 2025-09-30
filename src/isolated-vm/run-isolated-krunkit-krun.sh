@@ -10,9 +10,6 @@
 : ${DEFAULT_KVM_DISK_SIZE:=16}
 : ${DEFAULT_KVM_HOST_SSHD_PORT:=5557}
 : ${DEFAULT_KVM_PORTS_REDIRECT:="30800:8000;30801:8001;30802:8002"}
-: ${DEFAULT_IMAGE:="debian-13-generic-arm64-20250814-2204.qcow2"}
-: ${DEFAULT_KERNEL_VERSION:=""}
-: ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/trixie/20250814-2204"}
 : ${INSTALL_ADDITIONAL_DEBS:="http://http.us.debian.org/debian/pool/main/l/linux/linux-image-6.16.8+deb14-arm64-unsigned_6.16.8-1_arm64.deb"}
 : ${ENABLE_REBOOT_AFTER_INSTALLATION:=0}
 : ${COPY_IMAGE_BACKUP:=1}

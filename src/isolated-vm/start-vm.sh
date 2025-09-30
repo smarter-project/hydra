@@ -37,7 +37,7 @@ esac
 : ${EXTERNAL_9P_KUBELET_MOUNTS:=0}
 : ${COPY_IMAGE_BACKUP:=0}
 : ${ALWAYS_REUSE_DISK_IMAGE:=0}
-: ${DEFAULT_IMAGE:="debian-12-backports-generic-${ARCH}-20250804-2194.qcow2"}
+: ${DEFAULT_IMAGE:="debian-13-generic-${ARCH}-20250814-2204.qcow2"}
 : ${DEFAULT_KERNEL_VERSION:=""}
 : ${INSTALL_ADDITIONAL_DEBS:=""}
 : ${VM_USERNAME:="hailhydra"}
@@ -55,7 +55,8 @@ esac
 : ${DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT:=$(pwd)/k3s-var}
 : ${DEFAULT_DIR_K3S_VAR_LINUX_ROOT:=""}
 : ${DEFAULT_DIR_K3S_VAR_OTHER:=$(pwd)/k3s-var}
-: ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/bookworm-backports/20250804-2194"}
+: ${DEFAULT_KERNEL_VERSION:=""}
+: ${DEFAULT_IMAGE_SOURCE_URL:="https://cloud.debian.org/images/cloud/trixie/20250814-2204"}
 : ${DEFAULT_KVM_DARWIN_CPU:=2}
 : ${DEFAULT_KVM_DARWIN_MEMORY:=8}
 : ${DEFAULT_KVM_LINUX_CPU:=2}
@@ -878,6 +879,14 @@ network:
       - to: 0.0.0.0/0
         via: 10.0.2.2
     enp0s2:
+      dhcp4: no
+      addresses: [10.0.2.15/24]
+      nameservers:
+           addresses: [10.0.2.3]
+      routes:
+      - to: 0.0.0.0/0
+        via: 10.0.2.2
+    enp0s3:
       dhcp4: no
       addresses: [10.0.2.15/24]
       nameservers:
