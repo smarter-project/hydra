@@ -266,58 +266,54 @@ function check_image_exists() {
 	echo "Image downloaded and available"
 }
 
-function check_kernel_image() {
-	RIMD_KERNEL_FILENAME=${DEFAULT_RIMD_KERNEL_FILENAME}
-	[ ! -z ${DEFAULT_RIMD_KERNEL_VERSION} ] && RIMD_KERNEL_FILENAME="${RIMD_KERNEL_FILENAME}${DEFAULT_RIMD_KERNEL_VERSION}"
-	if [ ${IMAGE_RESTART} -eq 0 ]
+function create_qcow_krunkit() {
+	echo "Creating filesystem for booting on krunkit (rw image with EFI)"
+	if [ ! -d "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" ]
 	then
-		if [ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" \
-			-a -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
-			-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
-			-a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
-		then
-			if [ ${ENABLE_KRUNKIT} -eq 0 ]
-			then
-				echo "Reusing since all the artifacts and original downloaded files exist on ${DEFAULT_DIR_IMAGE}: ${DEFAULT_RIMD_ARTIFACT_FILENAME} ${RIMD_KERNEL_FILENAME} ${DEFAULT_RIMD_IMAGE_FILENAME} ${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
-				return
-			fi
-			if [ -d "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" \
-				-a -f "${DEFAULT_DIR_IMAGE}/rimd.raw" ]
-			then
-				echo "Reusing since all the artifacts and original downloaded files exist on ${DEFAULT_DIR_IMAGE}: ${DEFAULT_RIMD_ARTIFACT_FILENAME} ${RIMD_KERNEL_FILENAME} ${DEFAULT_RIMD_IMAGE_FILENAME} ${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
-				return
-			fi
-		fi
+		echo "Filesystem directory does not exist, creating it"
+		mkdir -p "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" 
+		echo "Copying EFI + grub (debian)"
+		tar -xf EFI_GRUB_RIMD.tar.gz -C "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" >/dev/null
+		echo "Copying kernel + initramfs"
+		cp "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/Image.gz"
+		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/initramfs.linux_arm64.cpio" 
 	fi
-	if [ ${IMAGE_RESTART} -eq 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" ]
+
+	sed -i -e 's{\(linux[^/]*/[^ ]*\).*${\1 ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off ENABLE_SSH=true '${EXTRA_APPEND}' '${ADDITIONAL_KERNEL_COMMANDLINE}'{' ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg 
+
+	#cat  ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg
+
+	echo "Creating raw filesystem"
+	hdiutil create -srcfolder ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem -layout GPTSPUD -volname EFI -fs FAT32 -format UDTO ${DEFAULT_DIR_IMAGE}/rimd || exit 1
+	mv ${DEFAULT_DIR_IMAGE}/rimd.cdr ${DEFAULT_DIR_IMAGE}/rimd.raw
+}
+
+function download_rimd_artifact() {
+	echo "Download image from ${DEFAULT_RIMD_ARTIFACT_URL}"
+	USER_ID="-nv"
+	if [ ! -z "${RIMD_ARTIFACT_URL_USER}" ]
 	then
-		echo "Downloaded artifact ${DEFAULT_RIMD_ARTIFACT_FILENAME} already exists on disk, reusing"
-	else
-		echo "Download image from ${DEFAULT_RIMD_ARTIFACT_URL}"
-		USER_ID="-nv"
-		if [ ! -z "${RIMD_ARTIFACT_URL_USER}" ]
-		then
-			USER_ID="--user=${RIMD_ARTIFACT_URL_USER}"
-		fi
-		USER_PASS="-nv"
-		if [ ! -z "${RIMD_ARTIFACT_URL_USER}" ]
-		then
-			USER_PASS="--password=${RIMD_ARTIFACT_URL_PASS}"
-		fi
-		USER_TOKEN="-nv"
-		if [ ! -z "${RIMD_ARTIFACT_URL_TOKEN}" ]
-		then
-			USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ARTIFACT_URL_TOKEN}"
-		fi
-		wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_RIMD_ARTIFACT_URL}"
-		if [ $? -ne 0 ]
-		then
-			rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" 2>/dev/null
-			echo "Download unsuccessful, bailing out"
-			exit 1
-		fi
-		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
+		USER_ID="--user=${RIMD_ARTIFACT_URL_USER}"
 	fi
+	USER_PASS="-nv"
+	if [ ! -z "${RIMD_ARTIFACT_URL_USER}" ]
+	then
+		USER_PASS="--password=${RIMD_ARTIFACT_URL_PASS}"
+	fi
+	USER_TOKEN="-nv"
+	if [ ! -z "${RIMD_ARTIFACT_URL_TOKEN}" ]
+	then
+		USER_TOKEN="--header=PRIVATE-TOKEN: ${RIMD_ARTIFACT_URL_TOKEN}"
+	fi
+	wget -nv "${USER_ID}" "${USER_PASS}" "${USER_TOKEN}" -O "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_RIMD_ARTIFACT_URL}"
+	if [ $? -ne 0 ]
+	then
+		rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" 2>/dev/null
+		echo "Download unsuccessful, bailing out"
+		exit 1
+	fi
+	mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
+
 	echo "Processing artifact ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 	if [[ ${DEFAULT_RIMD_ARTIFACT_FILENAME} =~ ^.*\.zip$ ]]
 	then
@@ -353,31 +349,46 @@ function check_kernel_image() {
 			exit 1
 		}
 	fi
+}
+
+function check_kernel_image() {
+	RIMD_KERNEL_FILENAME=${DEFAULT_RIMD_KERNEL_FILENAME}
+	[ ! -z ${DEFAULT_RIMD_KERNEL_VERSION} ] && RIMD_KERNEL_FILENAME="${RIMD_KERNEL_FILENAME}${DEFAULT_RIMD_KERNEL_VERSION}"
+	if [ ${IMAGE_RESTART} -eq 0 ]
+	then
+		if [ -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
+		     -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
+		     -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+		then
+			if [ ${ENABLE_KRUNKIT} -eq 0 ]
+			then
+				echo "Running QEMU and all the artifacts exist on ${DEFAULT_DIR_IMAGE}: ${RIMD_KERNEL_FILENAME} ${DEFAULT_RIMD_IMAGE_FILENAME} ${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
+				return
+			fi
+			if [ -d "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" \
+				-a -f "${DEFAULT_DIR_IMAGE}/rimd.raw" ]
+			then
+				echo "Reusing krunkit and all the artifacts exist on ${DEFAULT_DIR_IMAGE}: ${RIMD_KERNEL_FILENAME} ${DEFAULT_RIMD_IMAGE_FILENAME} ${DEFAULT_RIMD_FILESYSTEM_FILENAME}"
+				return
+			fi
+			create_qcow_krunkit
+			return
+		fi
+		[ -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" ] || echo "Downloading a release since file ${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME} does not exist"
+		[ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" ] || echo "Downloading a release since file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME} does not exist"
+		[ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ] || echo "Downloading a release since file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME} does not exist"
+		[ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" ] || download_rimd_artifact
+	else
+		echo "Image restart required so not reusing what is disk"
+		download_rimd_artifact
+	fi
 
 	if [ ${ENABLE_KRUNKIT} -eq 0 ]
 	then
 		return
 	fi
 
-	echo "Creating filesystem for booting on krunkit (rw image with EFI)"
-	if [ ! -d "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" ]
-	then
-		echo "Filesystem directory does not exist, creating it"
-		mkdir -p "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" 
-		echo "Copying EFI + grub (debian)"
-		tar -xf EFI_GRUB_RIMD.tar.gz -C "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem" >/dev/null
-		echo "Copying kernel + initramfs"
-		cp "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/Image.gz"
-		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/initramfs.linux_arm64.cpio" 
-	fi
-
-	sed -i -e 's{\(linux[^/]*/[^ ]*\).*${\1 ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off ENABLE_SSH=true '${EXTRA_APPEND}' '${ADDITIONAL_KERNEL_COMMANDLINE}'{' ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg 
-
-	#cat  ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg
-
-	echo "Creating raw filesystem"
-	hdiutil create -srcfolder ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem -layout GPTSPUD -volname EFI -fs FAT32 -format UDTO ${DEFAULT_DIR_IMAGE}/rimd || exit 1
-	mv ${DEFAULT_DIR_IMAGE}/rimd.cdr ${DEFAULT_DIR_IMAGE}/rimd.raw
+	create_qcow_krunkit
 }
 
 function check_kvm_version() {
