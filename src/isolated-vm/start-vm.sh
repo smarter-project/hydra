@@ -27,6 +27,10 @@ esac
 : ${ENABLE_VSOCK_LINUX:=0}
 : ${KRUNKIT_HTTP_PORT:=61800}
 : ${GVPROXY_HTTP_PORT:=61801}
+: ${DEFAULT_NETWORK_PREFIX:="10.0.2"}
+: ${DEFAULT_DEVICE_IP:="${DEFAULT_NETWORK_PREFIX}.15"}
+: ${DEFAULT_GATEWAY_IP:="${DEFAULT_NETWORK_PREFIX}.2"}
+: ${DEFAULT_DNS_IP:="${DEFAULT_NETWORK_PREFIX}.3"}
 : ${ADDITIONAL_KERNEL_COMMANDLINE:=""}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
 : ${DISABLE_CONTAINERD_CSI_PROXY:=0}
@@ -279,7 +283,7 @@ function create_qcow_krunkit() {
 		cp "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/initramfs.linux_arm64.cpio" 
 	fi
 
-	sed -i -e 's{\(linux[^/]*/[^ ]*\).*${\1 ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off ENABLE_SSH=true '${EXTRA_APPEND}' '${ADDITIONAL_KERNEL_COMMANDLINE}'{' ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg 
+	sed -i -e 's{\(linux[^/]*/[^ ]*\).*${\1 ip='${DEFAULT_DEVICE_IP}'::'${DEFAULT_GATEWAY_IP}':255.255.255.0:rimd:eth0:off ENABLE_SSH=true '${EXTRA_APPEND}' '${ADDITIONAL_KERNEL_COMMANDLINE}'{' ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg 
 
 	#cat  ${DEFAULT_DIR_IMAGE}/rimd_raw_filesystem/boot/grub/grub.cfg
 
@@ -810,7 +814,7 @@ EOF
 EOF
 	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","wget -O - https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION_INSTALL} sh -"]
-- [ bash,"-c","NELLY_HOSTNAME=10.0.2.2 /usr/bin/install_crismux.sh install"]
+- [ bash,"-c","NELLY_HOSTNAME=${DEFAULT_GATEWAY_IP} /usr/bin/install_crismux.sh install"]
 - [ bash,"-c","cat /etc/diod.conf.new > /etc/diod.conf"]
 - [ bash,"-c","sed -ie 's/DIOD_ENABLE=false/DIOD_ENABLE=true/g' /etc/default/diod"]
 - [ systemctl, daemon-reload ]
@@ -832,8 +836,8 @@ EOF
 EOF
 		else
 			cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-- [ bash,"-c","echo '10.0.2.2 /var/lib/kubelet 9p noauto,uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
-- [ bash,"-c","echo '10.0.2.2 /var/log/pods 9p noauto,uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo '${DEFAULT_GATEWAY_IP} /var/lib/kubelet 9p noauto,uname=root,aname=/var/lib/kubelet,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
+- [ bash,"-c","echo '${DEFAULT_GATEWAY_IP} /var/log/pods 9p noauto,uname=root,aname=/var/log/pods,access=user,trans=tcp,port=30564 0 0' >> /etc/fstab" ]
 EOF
 		fi
 	fi
@@ -883,52 +887,52 @@ network:
   ethernets:
     enp0s1:
       dhcp4: no
-      addresses: [10.0.2.15/24]
+      addresses: [${DEFAULT_DEVICE_IP}/24]
       nameservers:
-           addresses: [10.0.2.3]
+           addresses: [${DEFAULT_DNS_IP}]
       routes:
       - to: 0.0.0.0/0
-        via: 10.0.2.2
+        via: ${DEFAULT_GATEWAY_IP}
     enp0s2:
       dhcp4: no
-      addresses: [10.0.2.15/24]
+      addresses: [${DEFAULT_DEVICE_IP}/24]
       nameservers:
-           addresses: [10.0.2.3]
+           addresses: [${DEFAULT_DNS_IP}]
       routes:
       - to: 0.0.0.0/0
-        via: 10.0.2.2
+        via: ${DEFAULT_GATEWAY_IP}
     enp0s3:
       dhcp4: no
-      addresses: [10.0.2.15/24]
+      addresses: [${DEFAULT_DEVICE_IP}/24]
       nameservers:
-           addresses: [10.0.2.3]
+           addresses: [${DEFAULT_DNS_IP}]
       routes:
       - to: 0.0.0.0/0
-        via: 10.0.2.2
+        via: ${DEFAULT_GATEWAY_IP}
     ens4:
       dhcp4: no
-      addresses: [10.0.2.15/24]
+      addresses: [${DEFAULT_DEVICE_IP}/24]
       nameservers:
-           addresses: [10.0.2.3]
+           addresses: [${DEFAULT_DNS_IP}]
       routes:
       - to: 0.0.0.0/0
-        via: 10.0.2.2
+        via: ${DEFAULT_GATEWAY_IP}
     ens3:
       dhcp4: no
-      addresses: [10.0.2.15/24]
+      addresses: [${DEFAULT_DEVICE_IP}/24]
       nameservers:
-           addresses: [10.0.2.3]
+           addresses: [${DEFAULT_DNS_IP}]
       routes:
       - to: 0.0.0.0/0
-        via: 10.0.2.2
+        via: ${DEFAULT_GATEWAY_IP}
     eth0:
       dhcp4: no
-      addresses: [10.0.2.15/24]
+      addresses: [${DEFAULT_DEVICE_IP}/24]
       nameservers:
-           addresses: [10.0.2.2]
+           addresses: [${DEFAULT_GATEWAY_IP}]
       routes:
       - to: 0.0.0.0/0
-        via: 10.0.2.2
+        via: ${DEFAULT_GATEWAY_IP}
 EOF
 }
 
@@ -1271,7 +1275,7 @@ then
  '${VIRTIO_GPU}'
  '${KVM_NOGRAPHIC}
 	else
-		APPEND_OPTIONS="ip=10.0.2.15::10.0.2.2:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ENABLE_SSH=true ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
+		APPEND_OPTIONS="ip=${DEFAULT_DEVICE_IP}::${DEFAULT_GATEWAY_IP}:255.255.255.0:rimd:eth0:off console=/dev/ttyAMA0 ENABLE_SSH=true ${EXTRA_APPEND} ${ADDITIONAL_KERNEL_COMMANDLINE}"
 		APPEND="-append"
 
 		CMD_LINE='qemu-system-'${ARCH_M}'
@@ -1317,12 +1321,10 @@ then
 else
 	create_tmp_socket_krunkit
 
-
-	GVPROXY_NETWORKPREFIX="10.0.2"
-	GVPROXY_NETWORK=${GVPROXY_NETWORKPREFIX}".0/24"
-	GVPROXY_HOSTIP=${GVPROXY_NETWORKPREFIX}".2"
-	GVPROXY_GATEWAYIP=${GVPROXY_NETWORKPREFIX}".2"
-	GVPROXY_DEVICEIP=${GVPROXY_NETWORKPREFIX}".15"
+	GVPROXY_NETWORK=${DEFAULT_NETWORK_PREFIX}".0/24"
+	GVPROXY_HOSTIP=${DEFAULT_GATEWAY_IP}
+	GVPROXY_GATEWAYIP=${DEFAULT_GATEWAY_IP}
+	GVPROXY_DEVICEIP=${DEFAULT_DEVICE_IP}
 
 	rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
 
