@@ -2,10 +2,12 @@
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/hydra)](https://artifacthub.io/packages/search?repo=hydra)
 
-Hydra provides an isolated environment to run containers. The isolated containers run in a single VMi managed by an instance of containerd. Csi-grpc-proxy is used to enable access to containerd via a TCP connection.
-It also provides a way to install crismux that enables kubelet to talk to multiple containerd instances. Each containerd is responsible for a runtime class in kubernetes. Default runtime class containers run in the containerd local to the node and nelly runtime class containers run inside the VM.
+Hydra allows emulatoion of IoT devices that provides one or two isolated enviroments, both running linux. Each enviroment runs in a seperate VM providing independent resource anf configuration management.
+Each enviroment is expected to run containers. The emulated "host" enviroment runs a debian cloud image where k3s, crismux and containerd are installed and configured. 
+The "isolated" enciroment runs either a debian cloud image with containerd, or a rimdworkspace image. The "isolated" enviroment is designed to be managed by a "host" enviroment.  
+The "isolated" enviroment runs a proxy enabling TCP access to containerd (csi-grpc-proxy). Even though the "host and isolated environment are configured to work together, they can be started and used seepratedly, any.
 
-Hydra is composed by two separate modules: isolated-vm and add-crismux. Isolated-vm starts a VM with desired properties. Isolated-vm can be used as stand-alone by directly running start-vm.sh script on MacOS/Linux, as docker container or run using a helm chart. 
+Hydra is composed by two separate modules: isolated-vm and add-crismux. Isolated-vm starts a VM with desired properties. Isolated-vm can be used as stand-alone by directly running start-vm.sh script or using auxiliary scripts that configures start-vm.sh for a specific use, as docker container or run using a helm chart. 
 The second module install crismux in a k3s/k8s installation. It also installs a "nelly" runtime class. This runtime class will direct kubelet to use the isolated VM to run the container instead of running it on the host.
 
 Isolated-vm VM utilizes KVM or HVF acceleration if available. 
@@ -13,19 +15,26 @@ The scripts run under MacOS, Linux, docker and k3s.
 
 # Requirements
 
+## MacOS
+    - Homebrew (strongly suggested)
+    - Virtualization engine (either or both)
+        * KVM
+            - brew install qemu
+        * krunkit
+            - brew install podman
+            - brew install krunkit
+    - wget
+    		- brew install qemu
+    
+    - for testing 
+    		- cri-tools
+    			- brew install cri-tools)
+    
 ## Linux 
     - KVM
     - wget
     - mkisofs
 
-## MacOS
-    - Homebrew (strongly suggested)
-    - KVM
-    - wget
-    
-    - for testing 
-    - cri-tools (brew install cri-tools)
-    
 ## Docker
     - docker installed on the host
 
@@ -33,73 +42,11 @@ The scripts run under MacOS, Linux, docker and k3s.
     - running installation of K3s (can be installed using k3sup)
     - helm
 
-# Motivation
-
 # Usage
 
-## Helm (install both crismux and isolated-vm charts)
 
-```
-helm repo add hydra https://smarter-project.github.io/hydra/
-helm install \
-     --set "isolated-vm.configuration.sshkey=<public ssh key to use>" \
-     <local name> hydra/hydra
-```
-isolated-vm.configuration.sshkey allows ssh login to VM
+The start-vm.sh script had the following environment vaiables that configures what and how the VM will run.
 
-add
-```
---set "configuration.local_node_image_dir="
-```
-to store images at the container and not on the node, because the container filesystem is not persistent, all files will be lost if the container is stopped. 
-
-
-## Docker
-
-### Isolated-vm
-
-#### TL;DR
-
-Change `$(pwd)/image` to another directory if that is not appropriate. and `i$(ls ${HOME}/.ssh/*\..pub | head -n 1 | xrgs cat 2>/dev/null)` to the appropriate key to be used (this scirpt will select the first key available)..
-
-```
-docker run \
-    -d \
-    --rm \
-    --network host \
-    --env "VM_SSH_AUTHORIZED_KEY=$(ls ${HOME}/.ssh/*\.pub 2?dev/null | head -n 1 | xargs cat 2>/dev/null)" \
-    -v $(pwd)/image:/root/image \
-    -v /var/lib/kubelet:/var/lib/kubelet \
-    -v /var/log/pods:/var/log/pods \
-    --device /dev/kvm:/dev/kvm \
-    ghcr.io/smarter-project/hydra/isolated-vm:main
-```
-
-This command will run the container without logs. use the following command to observe the logs
-```
-docker logs -f <container ID> 
-```
-
-and this one to have a shell into the container. but preferably use ssh 
-
-```
-docker exec -it <container ID> /bin/bash
-```
-
-```
-ssh -p <DEFAULT_KVM_HOST_SSHD_PORT> <VM_USERNAME>@localhost
-```
-
-#### Details
-
-The directory "image" located on the directory `<local image directory>`. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
-A few variables of list below (user configuration, shared directories for example) if changed from when the image was first download will trigger a re-download of image. 
-SSH will be availabe at port 5555 and Containerd CRI will be available at port 35000. 
-A csi-proxy or crismux running on the host can be used to convert that port to a socket if required.
-
-The image will be resized automatically according to the sizes provided. The image will not be reduced in size.
-
-The VM will use acceleration if available.
 
 THe following variables configures the script:
 
@@ -176,10 +123,67 @@ THe following variables configures the script:
 | `KRUNKIT_HTTP_PORT` | Port of HTTP interface of krunkit | 61800 |
 | `GVPROXY_HTTP_PORT` | Port of HTTP interface of gvproxy | 61801 |
 | `DEFAULT_DIR_TMP_SOCKET` | Directory to use for sockets (path < 100 bytes) | `/tmp/image-$$` |
+| `DEFAULT_NETWORK_PREFIX` | Network prefix used for VM interface | 10.0.2 |
+| `DEFAULT_DEVICE_IP` | IP used on the VM interface | `${DEFAULT_NETWORK_PREFIX}.15` |
+| `DEFAULT_GATEWAY_IP` | IP use for the gateway | `${DEFAULT_NETWORK_PREFIX}.2` |
+| `DEFAULT_DNS_IP` | IP used for DNS (inside VM) | `${DEFAULT_NETWORK_PREFIX}.3` |
+
+The directory `<DEFAULT_DIR_IMAGE>` will be use to store all the files created or downloaded. Files downloaded will be cached locally and only redownloaded if a new epty version of that file is required.
+SSH will be availabe at port 5555 (if the envviroment variable is not changed). and Containerd CRI will be available at port 35000. 
+A csi-proxy or crismux running on the host can be used to convert that port to a socket if required.
+
+The image will be resized automatically according to the sizes provided. The image will not be reduced in size.
+
+The VM will use acceleration if available.
+
+The following scripts are provided so specific enviroments can be easily run.
+
+"run-host.sh" uses QEMU and run a host enviroment with k3s/crismux and containerd.
+"run-isolated.sh" uses QEMU and run an isolated enviroment using debian.
+"run-isolated-bare.sh" uses QEMU and run an isolated enviroment from rimdworkspacve
+"run-isolated-krunkit-krun.sh' uses krunkit and gvproxy to run an isolated environment using debian
+"run-isolated-krunkit-krun-bare.sh"  used krunkit and gvproxy to run an isolated environment using rimdworspace.
+
+Any host can be connected with any isolated environment. More than one host or more than one isolated environemt is not supported.
+
+## MacOSo
+
+Krunkit is only supported on MacOS. On a M4 machine both SME and vulkan are supported as acceleration.  
 
 ### Crismux
 
-## Linux and MacOS
+## Linux
+
+clone the repository
+```
+git clone https://github.com/smarter-project/hydra
+```
+
+### Isolated-vm
+
+#### TL;DR
+
+The terminal will output VM console messages and the last message should be a login prompt. When running the script directly this will be printed in the current terminal that the script is running. Use `VM_USERNAME`, `VM_PASSWORD` to login. Ssh and csi-grpc-proxy interfaces are available through the network.
+
+Two options to exit the VM after it has been started.
+
++ stop the hypervisor by typing "control-a" and "c" and at the hypervisor prompt, type "quit"
++ login to the VM using the `VM_USERNAME`, `VM_PASSWORD` and execute "`sudo shutdown -h 0"
+
+Run the script start-vm.sh to create the VM using debian cloud image
+```
+cd hydra/src/isolated-vm
+./start-vm.sh
+```
+
+It will start a VM using local directory image. If run as root (linux) it will also try to share the directories `/var/lib/kubelet` and `/var/log/pods`.
+
+Run the script start-vm.sh to create the VM using the kernel/initrd instead of cloud image
+```
+cd hydra/src/isolated-vm
+RUN_BARE_KERNEL=1 RIMD_ARTIFACT_URL_TOKEN=<access token> ./start-vm.sh
+
+## MacOS
 
 clone the repository
 ```
@@ -232,3 +236,58 @@ Run the script install_crismux.sh to enable crismux
 cd hydra/src/add-crismux
 ./install_crismux.sh install
 ```
+
+## Helm (install both crismux and isolated-vm charts)
+
+```
+helm repo add hydra https://smarter-project.github.io/hydra/
+helm install \
+     --set "isolated-vm.configuration.sshkey=<public ssh key to use>" \
+     <local name> hydra/hydra
+```
+isolated-vm.configuration.sshkey allows ssh login to VM
+
+add
+```
+--set "configuration.local_node_image_dir="
+```
+to store images at the container and not on the node, because the container filesystem is not persistent, all files will be lost if the container is stopped. 
+
+
+## Docker
+
+### Isolated-vm
+
+#### TL;DR
+
+Change `$(pwd)/image` to another directory if that is not appropriate. and `i$(ls ${HOME}/.ssh/*\..pub | head -n 1 | xrgs cat 2>/dev/null)` to the appropriate key to be used (this scirpt will select the first key available)..
+
+```
+docker run \
+    -d \
+    --rm \
+    --network host \
+    --env "VM_SSH_AUTHORIZED_KEY=$(ls ${HOME}/.ssh/*\.pub 2?dev/null | head -n 1 | xargs cat 2>/dev/null)" \
+    -v $(pwd)/image:/root/image \
+    -v /var/lib/kubelet:/var/lib/kubelet \
+    -v /var/log/pods:/var/log/pods \
+    --device /dev/kvm:/dev/kvm \
+    ghcr.io/smarter-project/hydra/isolated-vm:main
+```
+
+This command will run the container without logs. use the following command to observe the logs
+```
+docker logs -f <container ID> 
+```
+
+and this one to have a shell into the container. but preferably use ssh 
+
+```
+docker exec -it <container ID> /bin/bash
+```
+
+```
+ssh -p <DEFAULT_KVM_HOST_SSHD_PORT> <VM_USERNAME>@localhost
+```
+
+#### Details

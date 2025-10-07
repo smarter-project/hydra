@@ -1321,24 +1321,52 @@ then
 else
 	create_tmp_socket_krunkit
 
-	GVPROXY_NETWORK=${DEFAULT_NETWORK_PREFIX}".0/24"
+	GVPROXY_NETWORK="${DEFAULT_NETWORK_PREFIX}.0/24"
 	GVPROXY_HOSTIP=${DEFAULT_GATEWAY_IP}
 	GVPROXY_GATEWAYIP=${DEFAULT_GATEWAY_IP}
 	GVPROXY_DEVICEIP=${DEFAULT_DEVICE_IP}
 
 	rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
 
+	cat << EOF > "${DEFAULT_DIR_IMAGE}/config.yaml"
+log-level: info
+stack:
+    mtu: 1500
+    subnet: ${GVPROXY_NETWORK}
+    gatewayIP: ${GVPROXY_GATEWAYIP}
+    gatewayMacAddress: 5a:94:ef:e4:0c:dd
+    dns:
+        - name: containers.internal.
+          records:
+            - name: gateway
+              ip: ${GVPROXY_GATEWAYIP}
+            - name: host
+              ip: ${GVPROXY_GATEWAYIP}
+        - name: docker.internal.
+          records:
+            - name: gateway
+              ip: ${GVPROXY_GATEWAYIP}
+            - name: host
+              ip: ${GVPROXY_GATEWAYIP}
+    forwards:
+        127.0.0.1:${DEFAULT_KVM_HOST_SSHD_PORT}: ${GVPROXY_DEVICEIP}:22
+    nat:
+        ${GVPROXY_GATEWAYIP}: 127.0.0.1
+    gatewayVirtualIPs:
+        - ${GVPROXY_GATEWAYIP}
+    dhcpStaticLeases:
+        ${GVPROXY_DEVICEIP}: 5a:94:ef:e4:0c:ee
+    vpnKitUUIDMacAddresses:
+        c3d68012-0208-11ea-9fd7-f2189899ab08: 5a:94:ef:e4:0c:ee
+
+EOF
+
 	GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
-	 -mtu 1500 
 	 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
 	 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
-	 -ssh-port '${DEFAULT_KVM_HOST_SSHD_PORT}'
+	 -config '${DEFAULT_DIR_IMAGE}'/config.yaml
 	 -pid-file '${DEFAULT_DIR_IMAGE}'/gvproxy.pid
-	 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log
-	 -deviceIP '${GVPROXY_DEVICEIP}'
-	 -gatewayIP '${GVPROXY_GATEWAYIP}'
-	 -hostIP '${GVPROXY_HOSTIP}'
-	 -subnetIP '${GVPROXY_NETWORK}
+	 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log'
 
 	echo "${GVPROXYCMDLINE}"
 
