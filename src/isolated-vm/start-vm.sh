@@ -1186,6 +1186,8 @@ function krunkitcleanup()
 
 # ----- Main -------------------------------------------------------------------------------------
 
+check_image_directory
+
 if [ ${ENABLE_KRUNKIT} -eq 0 ]
 then
 	# Using QEMU
@@ -1216,7 +1218,6 @@ fi
 
 check_ports_redirection
 
-check_image_directory
 
 check_ssh_authorized_key
 
