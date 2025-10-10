@@ -1208,11 +1208,10 @@ fi
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
-	if [ ${OS} == "Darwin" ]
+	check_requirements wget qemu-img
+	if [ ${OS} != "Darwin" ]
 	then
-		check_requirements wget
-	else
-		check_requirements mkisofs wget
+		check_requirements mkisofs
 	fi
 fi
 
