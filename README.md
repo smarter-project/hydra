@@ -149,63 +149,88 @@ Get Hydra running in under 5 minutes:
 
 ### Single VM Quick Start
 
-```bash
-# 1. Clone and enter directory
-git clone https://github.com/smarter-project/hydra
-cd hydra/src/isolated-vm
+1. **Clone and enter directory**:
 
-# 2. Start VM (downloads image on first run)
-./start-vm.sh
+   ```bash
+   git clone https://github.com/smarter-project/hydra
+   cd hydra/src/isolated-vm
+   ```
 
-# 3. In another terminal, SSH into the VM
-ssh hailhydra@localhost -p 5555
-# Password: hailhydra
-```
+2. **Start VM (downloads image on first run)**:
+
+   ```bash
+   ./start-vm.sh
+   ```
+
+3. **In another terminal, SSH into the VM**
+
+   ```bash
+   ssh hailhydra@localhost -p 5555
+   # Password: hailhydra
+   ```
 
 The VM will boot and be ready in about 2-3 minutes. You'll see the login prompt in the terminal running `start-vm.sh`.
 
 ### Multiple VMs Quick Start
 
-```bash
-# 1. Navigate to multi-vm directory
-cd src/multi-vm
+1. **Navigate to multi-vm directory**
 
-# 2. Edit vm-config.yaml to configure your VMs
-# 3. Start all VMs
-sudo ./start-multi-vm.sh
+   ```bash
+   cd src/multi-vm
+   ```
 
-# 4. SSH into VMs (ports configured in vm-config.yaml)
-ssh hydra@localhost -p 5555  # VM1
-ssh hydra@localhost -p 5556  # VM2
-```
+2. **Edit vm-config.yaml to configure your VMs**
+
+3. **Start all VMs**
+
+   ```bash
+   sudo ./start-multi-vm.sh
+   ```
+
+4. **SSH into VMs (ports configured in vm-config.yaml)**
+
+   ```bash
+   ssh hydra@localhost -p 5555  # VM1
+   ssh hydra@localhost -p 5556  # VM2
+   ```
 
 ### Kubernetes Quick Start
 
-```bash
-# 1. Install k3s (if not installed)
-curl -sfL https://get.k3s.io | sh -
+1. **Install k3s (if not installed)**
 
-# 2. Install Crismux
-cd src/add-crismux
-./install_crismux.sh install
+	```bash
+	curl -sfL https://get.k3s.io | sh -
+	```
 
-# 3. Start isolated VM (in another terminal)
-cd ../isolated-vm
-sudo ./start-vm.sh
+2. **Install Crismux**
 
-# 4. Create a pod with nelly runtime class
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: test-isolated
-spec:
-  runtimeClassName: nelly
-  containers:
-  - name: nginx
-    image: nginx:latest
-EOF
-```
+	```bash
+	cd src/add-crismux
+	./install_crismux.sh install
+	```
+
+3. **Start isolated VM (in another terminal)**
+
+	```bash
+	cd ../isolated-vm
+	sudo ./start-vm.sh
+	```
+	
+4. **Create a pod with nelly runtime class**
+
+	```bash
+	kubectl apply -f - <<EOF
+	apiVersion: v1
+	kind: Pod
+	metadata:
+	  name: test-isolated
+	spec:
+	  runtimeClassName: nelly
+	  containers:
+	  - name: nginx
+	    image: nginx:latest
+	EOF
+	```
 
 That's it! For more detailed configuration options, see the sections below.
 
@@ -257,6 +282,7 @@ See the full list in `src/isolated-vm/start-vm.sh` or run with `DEBUG=1`.
 #### Examples
 
 **Basic VM with custom resources**:
+
 ```bash
 cd src/isolated-vm
 DEFAULT_KVM_DARWIN_CPU=4 \
@@ -266,17 +292,20 @@ DEFAULT_KVM_DISK_SIZE=10 \
 ```
 
 **VM with SSH key**:
+
 ```bash
 export VM_SSH_AUTHORIZED_KEY="$(cat ~/.ssh/id_rsa.pub)"
 ./start-vm.sh
 ```
 
 **Headless VM**:
+
 ```bash
 KVM_NOGRAPHIC="-nographic" ./start-vm.sh &
 ```
 
 **RIMDworkspace VM**:
+
 ```bash
 RUN_BARE_KERNEL=1 \
 RIMD_ARTIFACT_URL_TOKEN="your-token" \
@@ -483,21 +512,22 @@ The isolated environment provides:
 
 ```
 Kubelet (Host)
+    │(via Unix socket)
     │
-    │ (via Crismux)
     ▼
-Containerd Socket (Host)
+Crismux ───────────────────────────┐
+    │(via TCP:localhost:35000)     │(via Unix socket)
+    │                              ▼
+    │                          Containerd
+    ▼                              │
+csi-grpc-proxy                     ▼
+    │(via Unix socket)    Local Container Execution
     │
-    │ (via csi-grpc-proxy)
-    ▼
-TCP:localhost:35000
-    │
-    │ (port forward)
     ▼
 Containerd (Isolated VM)
     │
     ▼
-Container Execution
+Isolated Container Execution
 ```
 
 ## Troubleshooting
