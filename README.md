@@ -19,7 +19,8 @@ Hydra enables the creation of isolated execution environments for containers, pe
 - **Dual Environment Architecture**: Host and isolated environments, each in dedicated VMs
 - **Kubernetes Integration**: Full k3s support with Crismux for multi-containerd orchestration
 - **Cross-Platform Support**: Runs on macOS (Apple Silicon & Intel), Linux, Docker, and Kubernetes
-- **Multiple Virtualization Backends**: QEMU/KVM, HVF (Hypervisor.framework), and Krunkit support
+- **Multiple Virtualization Backends**: QEMU/KVM, HVF (Hypervisor.framework), and Krunkit support.
+- **Support SME and Vulkan acceleration**: Krunkit supports SME2 on Apple M4 platforms and vulkan on all Apple silicon platforms. QEMU supports vulkan acceleration on Linux.
 - **Container Runtime Isolation**: Each VM runs containerd independently
 - **Network Configuration**: Flexible networking with port forwarding and CSI proxy
 - **Multi-VM Orchestration**: Launch multiple VMs concurrently (see `src/multi-vm/`)
@@ -27,33 +28,33 @@ Hydra enables the creation of isolated execution environments for containers, pe
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Physical Host                            │
-│                                                             │
-│  ┌─────────────────────────────────────┐                   │
-│  │       Host Environment (VM)         │                   │
-│  │  ┌──────────────────────────────┐  │                   │
-│  │  │   k3s / Kubernetes          │  │                   │
-│  │  │   Crismux                    │  │                   │
-│  │  │   Containerd (host runtime)  │  │                   │
-│  │  │   Kubelet                    │  │                   │
-│  │  └──────────────────────────────┘  │                   │
-│  │           │                         │                   │
-│  │           │ Runtime Class: "nelly"  │                   │
-│  └───────────┼─────────────────────────┘                 │
-│              │                                             │
-│  ┌───────────▼─────────────────────────┐                 │
-│  │    Isolated Environment (VM)         │                 │
-│  │  ┌──────────────────────────────┐  │                 │
-│  │  │   Containerd (isolated)      │  │                 │
-│  │  │   CSI-gRPC-Proxy              │  │                 │
-│  │  │   (TCP → Unix Socket)        │  │                 │
-│  │  └──────────────────────────────┘  │                 │
-│  │                                       │                 │
-│  │  Containers run here with            │                 │
-│  │  isolation from host environment     │                 │
-│  └───────────────────────────────────────┘                 │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│                    Physical Host               │
+│                                                │
+│  ┌─────────────────────────────────────┐       │
+│  │       Host Environment (VM)         │       │
+│  │  ┌──────────────────────────────┐   │       │
+│  │  │   k3s / Kubernetes           │   │       │
+│  │  │   Crismux                    │   │       │
+│  │  │   Containerd (host runtime)  │   │       │
+│  │  │   Kubelet                    │   │       │
+│  │  └──────────────────────────────┘   │       │
+│  │           │                         │       │
+│  │           │ Runtime Class: "nelly"  │       │
+│  └───────────┼─────────────────────────┘       │
+│              │                                 │
+│  ┌───────────▼─────────────────────────┐       │
+│  │    Isolated Environment (VM)        │       │
+│  │  ┌──────────────────────────────┐   │       │
+│  │  │   Containerd (isolated)      │   │       │
+│  │  │   csi-grpc-proxy             │   │       │
+│  │  │   (TCP → Unix Socket)        │   │       │
+│  │  └──────────────────────────────┘   │       │
+│  │                                     │       │
+│  │  Containers run here with           │       │
+│  │  isolation from host environment    │       │
+│  └─────────────────────────────────────┘       │
+└────────────────────────────────────────────────┘
 ```
 
 ### Components
@@ -108,18 +109,21 @@ sudo usermod -aG kvm $USER
 ### Basic Usage
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/smarter-project/hydra
    cd hydra
    ```
 
 2. **Start an isolated VM**:
+
    ```bash
    cd src/isolated-vm
    ./start-vm.sh
    ```
 
 3. **Access the VM**:
+
    ```bash
    # SSH into the VM (default port 5555)
    ssh hailhydra@localhost -p 5555
@@ -130,6 +134,7 @@ sudo usermod -aG kvm $USER
    ```
 
 4. **Start multiple VMs** (see multi-vm documentation):
+
    ```bash
    cd src/multi-vm
    sudo ./start-multi-vm.sh
@@ -317,7 +322,8 @@ For running multiple VMs simultaneously, see `src/multi-vm/README.md`.
 
 ### Connecting to Containerd
 
-1. **Download CSI-gRPC-Proxy**:
+1. **Download csi-grpc-proxy**:
+
    ```bash
    # macOS (ARM64)
    wget https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-darwin-arm64
@@ -329,6 +335,7 @@ For running multiple VMs simultaneously, see `src/multi-vm/README.md`.
    ```
 
 2. **Start the proxy**:
+
    ```bash
    BIND_TO=unix:///tmp/socket-csi \
    PROXY_TO=tcp://127.0.0.1:35000 \
@@ -336,6 +343,7 @@ For running multiple VMs simultaneously, see `src/multi-vm/README.md`.
    ```
 
 3. **Use crictl**:
+
    ```bash
    # List containers
    crictl --runtime-endpoint unix:///tmp/socket-csi ps
@@ -380,18 +388,25 @@ ssh -p 5555 hailhydra@localhost
 
 Deploy the complete stack:
 
-```bash
-# Add Helm repository
-helm repo add hydra https://smarter-project.github.io/hydra/
+#### Add Helm repository
 
-# Install
+```bash
+helm repo add hydra https://smarter-project.github.io/hydra/
+```
+
+#### Install
+
+```bash
 helm install \
   --create-namespace \
   --namespace hydra \
   --set "isolated-vm.configuration.sshkey=$(cat ~/.ssh/id_rsa.pub)" \
   hydra hydra/hydra
+```
 
-# Verify
+#### Verify
+
+```bash
 kubectl get pods -n hydra
 kubectl get runtimeclass
 ```
@@ -401,17 +416,20 @@ kubectl get runtimeclass
 ### Standalone k3s Installation
 
 1. **Install k3s** (if not already installed):
+
    ```bash
    curl -sfL https://get.k3s.io | sh -
    ```
 
 2. **Install Crismux**:
+
    ```bash
    cd src/add-crismux
    ./install_crismux.sh install
    ```
 
 3. **Start isolated VM**:
+
    ```bash
    cd src/isolated-vm
    sudo ./start-vm.sh
@@ -440,18 +458,21 @@ kubectl get runtimeclass
 ### Host Environment
 
 The host environment runs:
+
 - **k3s**: Lightweight Kubernetes distribution
+- **Kubelet**: Kubernetes node agent
 - **Crismux**: Multi-containerd runtime manager
 - **Containerd (host)**: Primary container runtime
-- **Kubelet**: Kubernetes node agent
+
 
 Containers scheduled with the "nelly" runtime class are routed to the isolated environment.
 
 ### Isolated Environment
 
 The isolated environment provides:
+
 - **Containerd (isolated)**: Independent container runtime
-- **CSI-gRPC-Proxy**: Converts TCP to Unix socket for Kubernetes integration
+- **csi-grpc-proxy**: Converts TCP to Unix socket for Kubernetes integration
 - **Network Isolation**: Separate network namespace
 - **Resource Isolation**: Dedicated CPU, memory, and disk
 
@@ -464,7 +485,7 @@ Kubelet (Host)
     ▼
 Containerd Socket (Host)
     │
-    │ (via CSI-gRPC-Proxy)
+    │ (via csi-grpc-proxy)
     ▼
 TCP:localhost:35000
     │
@@ -493,7 +514,7 @@ Container Execution
 
 ### Containerd Connection Issues
 
-- **Proxy not running**: Ensure CSI-gRPC-Proxy is active
+- **Proxy not running**: Ensure csi-grpc-proxy is active
 - **Wrong endpoint**: Verify `PROXY_TO` points to correct port
 - **VM not ready**: Wait for VM to fully boot and containerd to start
 
@@ -520,7 +541,7 @@ Part of the Smarter Project. See repository for license details.
 ## Related Projects
 
 - **Crismux**: Multi-containerd runtime manager
-- **CSI-gRPC-Proxy**: Container runtime interface proxy
+- **csi-grpc-proxy**: Container runtime interface proxy
 - **RIMDworkspace**: Isolated runtime environment
 
 ## Resources
