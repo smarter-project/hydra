@@ -1,201 +1,566 @@
-# Part of Smart-home security demo using AI - LLMs
+# Hydra: IoT Device Emulation and Isolation Framework
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/hydra)](https://artifacthub.io/packages/search?repo=hydra)
 
-Hydra provides an isolated environment to run containers. The isolated containers run in a single VMi managed by an instance of containerd. Csi-grpc-proxy is used to enable access to containerd via a TCP connection.
-It also provides a way to install crismux that enables kubelet to talk to multiple containerd instances. Each containerd is responsible for a runtime class in kubernetes. Default runtime class containers run in the containerd local to the node and nelly runtime class containers run inside the VM.
+Hydra is a comprehensive framework for emulating IoT devices with isolated execution environments. It provides one or two isolated Linux environments, each running in separate virtual machines with independent resource and configuration management. Designed as part of a smart-home security demonstration using AI and LLMs, Hydra enables sophisticated container orchestration scenarios with strong isolation guarantees.
 
-Hydra is composed by two separate modules: isolated-vm and add-crismux. Isolated-vm starts a VM with desired properties. Isolated-vm can be used as stand-alone by directly running start-vm.sh script on MacOS/Linux, as docker container or run using a helm chart. 
-The second module install crismux in a k3s/k8s installation. It also installs a "nelly" runtime class. This runtime class will direct kubelet to use the isolated VM to run the container instead of running it on the host.
+## Overview
 
-Isolated-vm VM utilizes KVM or HVF acceleration if available. 
-The scripts run under MacOS, Linux, docker and k3s. 
+Hydra enables the creation of isolated execution environments for containers, perfect for:
 
-# Requirements
+- **Smart Home Security Research**: Simulate IoT devices in isolated virtual machines
+- **Multi-Container Orchestration**: Run containers in separate VMs with Kubernetes integration
+- **Security Testing**: Test container isolation and security boundaries
+- **IoT Device Emulation**: Emulate complete device stacks in virtual environments
+- **Edge Computing Research**: Prototype edge computing scenarios with VM-based isolation
 
-## Linux 
-    - KVM
-    - wget
-    - mkisofs
+### Key Features
 
-## MacOS
-    - Homebrew (strongly suggested)
-    - KVM
-    - wget
-    
-    - for testing 
-    - cri-tools (brew install cri-tools)
-    
-## Docker
-    - docker installed on the host
+- **Dual Environment Architecture**: Host and isolated environments, each in dedicated VMs
+- **Kubernetes Integration**: Full k3s support with Crismux for multi-containerd orchestration
+- **Cross-Platform Support**: Runs on macOS (Apple Silicon & Intel), Linux, Docker, and Kubernetes
+- **Multiple Virtualization Backends**: QEMU/KVM, HVF (Hypervisor.framework), and Krunkit support.
+- **Support SME and Vulkan acceleration**: Krunkit supports SME2 on Apple M4 platforms and vulkan on all Apple silicon platforms. QEMU supports vulkan acceleration on Linux.
+- **Container Runtime Isolation**: Each VM runs containerd independently
+- **Network Configuration**: Flexible networking with port forwarding and CSI proxy
+- **Multi-VM Orchestration**: Launch multiple VMs concurrently (see `src/multi-vm/`)
 
-## K3s
-    - running installation of K3s (can be installed using k3sup)
-    - helm
-
-# Motivation
-
-# Usage
-
-## Helm (install both crismux and isolated-vm charts)
+## Architecture
 
 ```
-helm repo add hydra https://smarter-project.github.io/hydra/
-helm install \
-     --set "isolated-vm.configuration.sshkey=<public ssh key to use>" \
-     <local name> hydra/hydra
-```
-isolated-vm.configuration.sshkey allows ssh login to VM
-
-add
-```
---set "configuration.local_node_image_dir="
-```
-to store images at the container and not on the node, because the container filesystem is not persistent, all files will be lost if the container is stopped. 
-
-
-## Docker
-
-### Isolated-vm
-
-#### TL;DR
-
-
-
-```
-docker run \
-    -d \
-    --rm \
-    --network host \
-    --env "VM_SSH_AUTHORIZED_KEY=\"$(cat <file with SSH public key>)\"" \
-    -v <local image directory>:/root/image \
-    -v /var/lib/kubelet:/var/lib/kubelet \
-    -v /var/log/pods:/var/log/pods \
-    --device /dev/kvm:/dev/kvm \
-    isolated-vm
+┌───────────────────────────────────────────┐
+│                Physical Host              │
+│                                           │
+│  ┌─────────────────────────────────────┐  │
+│  │               Host Environment (VM) │  │
+│  │  ┌──────────────────────────────┐   │  │
+│  │  │       k3s / Kubernetes       │   │  │
+│  │  │            ▼                 │   │  │
+│  │  │         Kubelet              │   │  │
+│  │  │            ▼                 │   │  │
+│  │  │     ┌── Crismux ──┐          │   │  │
+│  │  │     │             ▼          │   │  │
+│  │  │     │         Containerd     │   │  │
+│  │  └─────│────────────────────────┘   │  │
+│  └────────┼────────────────────────────┘  │
+│           │                               │
+│  ┌────────│────────────────────────────┐  │
+│  │        │  Isolated Environment (VM) │  │
+│  │  ┌─────│────────────────────────┐   │  │
+│  │  │     │(TCP → Unix Socket)     │   │  │
+│  │  │     ▼                        │   │  │
+│  │  │   csi-grpc-proxy             │   │  │
+│  │  │     ▼                        │   │  │
+│  │  │  Containerd ("nelly")        │   │  │
+│  │  └──────────────────────────────┘   │  │
+│  │                                     │  │
+│  │  Containers run here with           │  │
+│  │  isolation from host environment    │  │
+│  └─────────────────────────────────────┘  │
+└───────────────────────────────────────────┘
 ```
 
-Update `<file with SSH public key>` and `<local image directory>` with the correct files. `<local image directory>` has to have a full path.
+### Components
 
-#### Details
+1. **Isolated-VM** (`src/isolated-vm/`): Core VM creation and management
+   - QEMU/KVM-based virtualization
+   - Debian cloud images or RIMDworkspace support
+   - Cloud-init configuration (debian cloud images)
+   - Port forwarding (SSH, Containerd, RIMD)
+   - 9P filesystem mounts for kubelet integration
 
-The directory "image" located on the directory `<local image directory>`. The image will be downloaded and configured once and new runs will reuse the umage (much faster startup).
-A few variables of list below (user configuration, shared directories for example) if changed from when the image was first download will trigger a re-download of image. 
-SSH will be availabe at port 5555 and Containerd CRI will be available at port 35000. 
-A csi-proxy or crismux running on the host can be used to convert that port to a socket if required.
+2. **Add-Crismux** (`src/add-crismux/`): Kubernetes multi-containerd support
+   - Crismux installation in k3s/k8s
+   - "nelly" runtime class configuration
+   - Enables kubelet to route containers to isolated VMs
 
-The image will be resized automatically according to the sizes provided. The image will not be reduced in size.
+3. **Multi-VM** (`src/multi-vm/`): Orchestration for multiple VMs
+   - YAML-based configuration
+   - Parallel VM execution
+   - Network configuration and IP management
+   - See `src/multi-vm/README.md` for details
 
-The VM will use acceleration if available.
+## Quick Start
 
-THe following variables configures the script:
+### Prerequisites
 
-| Variable | Usage | Default value |
-| -------- | ----- | ------------- |
-| `DRY_RUN_ONLY` | If > 0 will print the command line for the VM and exit | 0 |
-| `DEBUG` | If > 0 will print debug for the script | 0 |
-| `DISABLE_9P_KUBELET_MOUNTS` | If > 0 do not enable mounting of /var/lib/kubelet and /var/lib/pods | 0 |
-| `ADDITIONAL_9P_MOUNTS` | additional mounts format `<host dir>|<vm mount dir>[$<host dir>|<vm mount dir>]` | "" |
-| `COPY_IMAGE_BACKUP` | if > 0 preserve a copy of the image and start form a copy of that image if it exists | 0 |
-| `ALWAYS_REUSE_DISK_IMAGE` | if > 0 reuse existing disk image even if configuration has changed | 0 |
-| `DEFAULT_KERNEL_VERSION` | kernel version to install | `6.12.12+bpo` |
-| `KERNEL_VERSION` | full version to install if a different kernel is required | `linux-image-${DEFAULT_KERNEL_VERSION}-${ARCH}` |
-| `DEFAULT_DIR_IMAGE` | Where to store the downloaded image | `$(pwd)/image` |
-| `DEFAULT_DIR_K3S_VAR_DARWIN` | Where to point the 9p mounts if running on MacOS | `$(pwd)/k3s-var` |
-| `DEFAULT_DIR_K3S_VAR_LINUX_NON_ROOT` | Where to point the 9p mounts if running on Linux as a non-root user | `$(pwd)/k3s-var` |
-| `DEFAULT_DIR_K3S_VAR_LINUX_ROOT` | Where to point the 9p mounts if running on linux machine as root (or inside a container ) | |
-| `DEFAULT_DIR_K3S_VAR_OTHER` | Where to point the 9p mounts if running on other OS machine | `$(pwd)/k3s-var` |
-| `DEFAULT_IMAGE` | QCOW image to use as base | `debian-12-genericcloud-${ARCH}-20250316-2053.qcow2` |
-| `DEFAULT_IMAGE_SOURCE_URL` | where to download QCOW image | `https://cloud.debian.org/images/cloud/bookworm/20250316-2053/` |
-| `DEFAULT_DIR_IMAGE` | Directory to use to store image and artifacts | `$(pwd)/image` |
-| `DEFAULT_KVM_DARWIN_CPU` | # CPUS allocated to the VM when running in MacOS | 2 |
-| `DEFAULT_KVM_DARWIN_MEMORY` | DRAM allocated to the VM to the VM when running in MacOS | 2 |
-| `DEFAULT_KVM_LINUX_CPU` | # CPUS allocated to the VM when running in Linux/container | 2 |
-| `DEFAULT_KVM_LINUX_MEMORY` | DRAM allocated to the VM to the VM when running in Linux/container | 2 | 
-| `DEFAULT_KVM_UNKNOWN_CPU` | # CPUS allocated to the VM when running in unknown OS | 2 |
-| `DEFAULT_KVM_UNKNOWN_MEMORY` | DRAM allocated to the VM to the VM when running in unknown OS | 2 | 
-| `DEFAULT_KVM_DISK_SIZE` | Maximum size of QCOW disk | 3 |
-| `DEFAULT_KVM_DARWIN_BIOS` | bios to boot (UEFI) when running under MacOS | `/opt/homebrew/Cellar/qemu/9.2.2/share/qemu/edk2-${ARCH}-code.fd` | 
-| `DEFAULT_KVM_LINUX_v9_BIOS` | bios to boot (UEFI) when running under Linux/container with KVM v9x | |
-| `DEFAULT_KVM_LINUX_v7_BIOS` | bios to boot (UEFI) when running under Linux/container with KVM v7x | `/usr/share/qemu-efi-aarch64/QEMU_EFI.fd` |
-| `DEFAULT_KVM_UNKNWON_BIOS` | bios to boot (UEFI) when running under unknown OS | |
-| `DEFAULT_KVM_HOST_SSHD_PORT` | TCP port to be used on the host to access port 22 on VM | 5555 |
-| `DEFAULT_KVM_HOST_CONTAINERD_PORT` | TCP port to be used on the host to access port 35000 (cs-grpc-proxy) on VM | 35000 |
-| `DEFAULT_CSI_GRPC_PROXY_URL` | URL to get csi-grpc-proxy binary | `https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux- `|
-| `KVM_CPU_TYPE` | CPU type | Use "host" if accelerated, otherise use "cortex-a76" or "qemu64-v1" |
-| `KVM_CPU` | # cpus to allocate | `DEFAULT_KVM_<OS>_CPU`|
-| `KVM_MEMORY` | DRAM to allocate | `DEFAULT_KVM_<OS>_MEMORY` |
-| `KVM_BIOS` | BIOS to use | `DEFAULT_KVM_<OS>_BIOS` |
-| `KVM_MACHINE_TYPE` | KVM machine type | use "virt" or ""pc" |
-| `VM_USERNAME` | Usename to created at VM | hailhydra |
-| `VM_SALT` | Salt to be used when creating the encrypted password | 123456 |
-| `VM_PASSWORD` | Cleartext password to be used | hailhydra |
-| `VM_PASSWORD_ENCRYPTED` | Encrypted password to be used, overwrites the cleartext password | | 
-| `VM_HOSTNAME` | Hostname | vm-host |
-| `VM_SSH_AUTHORIZED_KEY` | ssh public key to add to authorized\_key for the user VM_USERNAME | |
-| `RUN_BARE_KERNEL` | if > 0 then Use kernel and initrd instead of cloud image | 0 | 
-| `DEFAULT_KVM_PORTS_REDIRECT` | format is `<external>:<internal>[;<external>:<internal>]` | "" |
-| `DEFAULT_RIMD_ARTIFACT_URL` | where to download the artifacts (kernel + initrd) | https://gitlab.arm.com/api/v4/projects/576/jobs/146089/artifacts |
-| `RIMD_ARTIFACT_URL_USER` | User to authenticate to get artifacts from URL | "" | 
-| `RIMD_ARTIFACT_URL_PASS` | Password to authenticate to get artifacts from URL | "" |
-| `RIMD_ARTIFACT_URL_TOKEN` | Token to authenticate to get artifacts from URL |  "" |
-| `DEFAULT_RIMD_ARTIFACT_FILENAME` | Filename to use when storing the downloaded file | artifacts.zip |
-| `DEFAULT_RIMD_KERNEL_FILENAME` | Filename that contains the kernel to run | final_artifact/Image.gz |
-| `DEFAULT_RIMD_IMAGE_FILENAME` | Filename that contains the initrd to run | final_artifact/initramfs.linux_arm64.cpio |
-| `DEFAULT_RIMD_FILESYSTEM_FILENAME` | Filename that contains the read/write filesystem for the VM | final_artifact/something.qcow2 |
+#### macOS
 
-### Crismux
+```bash
+# Install Homebrew if needed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-## Linux and MacOS
+# Install QEMU and dependencies
+brew install qemu wget cri-tools
 
-clone the repository
+# Optional: For Krunkit support (macOS only, M4 recommended)
+brew install podman krunkit
 ```
+
+#### Linux
+
+```bash
+# Install QEMU/KVM
+sudo apt-get update
+sudo apt-get install -y qemu-kvm qemu-utils wget genisoimage
+
+# Verify KVM access
+sudo usermod -aG kvm $USER
+# Log out and back in for group changes to take effect
+```
+
+### Basic Usage
+
+1. **Clone the repository**:
+
+   ```bash
+   git clone https://github.com/smarter-project/hydra
+   cd hydra
+   ```
+
+2. **Start an isolated VM**:
+
+   ```bash
+   cd src/isolated-vm
+   ./start-vm.sh
+   ```
+
+3. **Access the VM**:
+
+   ```bash
+   # SSH into the VM (default port 5555)
+   ssh hailhydra@localhost -p 5555
+   # Password: hailhydra
+   
+   # Or use the containerd endpoint
+   # Configure csi-grpc-proxy first (see Testing section)
+   ```
+
+4. **Start multiple VMs** (see multi-vm documentation):
+
+   ```bash
+   cd src/multi-vm
+   sudo ./start-multi-vm.sh
+   ```
+
+## Quick Start
+
+Get Hydra running in under 5 minutes:
+
+### Single VM Quick Start
+
+```bash
+# 1. Clone and enter directory
 git clone https://github.com/smarter-project/hydra
-```
-
-### Isolated-vm
-
-#### TL;DR
-
-The terminal will output VM console messages and the last message should be a login prompt. When running the script directly this will be printed in the current terminal that the script is running. Use `VM_USERNAME`, `VM_PASSWORD` to login. Ssh and csi-grpc-proxy interfaces are available through the network.
-
-Two options to exit the VM after it has been started.
-
-+ stop the hypervisor by typing "control-a" and "c" and at the hypervisor prompt, type "quit"
-+ login to the VM using the `VM_USERNAME`, `VM_PASSWORD` and execute "`sudo shutdown -h 0"
-
-Run the script start-vm.sh to create the VM using debian cloud image
-```
 cd hydra/src/isolated-vm
+
+# 2. Start VM (downloads image on first run)
+./start-vm.sh
+
+# 3. In another terminal, SSH into the VM
+ssh hailhydra@localhost -p 5555
+# Password: hailhydra
+```
+
+The VM will boot and be ready in about 2-3 minutes. You'll see the login prompt in the terminal running `start-vm.sh`.
+
+### Multiple VMs Quick Start
+
+```bash
+# 1. Navigate to multi-vm directory
+cd src/multi-vm
+
+# 2. Edit vm-config.yaml to configure your VMs
+# 3. Start all VMs
+sudo ./start-multi-vm.sh
+
+# 4. SSH into VMs (ports configured in vm-config.yaml)
+ssh hydra@localhost -p 5555  # VM1
+ssh hydra@localhost -p 5556  # VM2
+```
+
+### Kubernetes Quick Start
+
+```bash
+# 1. Install k3s (if not installed)
+curl -sfL https://get.k3s.io | sh -
+
+# 2. Install Crismux
+cd src/add-crismux
+./install_crismux.sh install
+
+# 3. Start isolated VM (in another terminal)
+cd ../isolated-vm
+sudo ./start-vm.sh
+
+# 4. Create a pod with nelly runtime class
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-isolated
+spec:
+  runtimeClassName: nelly
+  containers:
+  - name: nginx
+    image: nginx:latest
+EOF
+```
+
+That's it! For more detailed configuration options, see the sections below.
+
+## Detailed Usage
+
+### Isolated-VM Module
+
+The `isolated-vm` module creates and manages virtual machines with container runtimes.
+
+#### Quick Start Scripts
+
+Pre-configured scripts for common scenarios:
+
+- **`run-host.sh`**: Host environment with k3s, crismux, and containerd
+- **`run-isolated.sh`**: Isolated environment using Debian cloud image
+- **`run-isolated-bare.sh`**: Isolated environment using RIMDworkspace
+- **`run-isolated-krunkit-krun.sh`**: Isolated environment using Krunkit (macOS M4)
+- **`run-isolated-krunkit-krun-bare.sh`**: RIMDworkspace with Krunkit (macOS M4)
+
+#### Environment Variables
+
+The `start-vm.sh` script is configured via environment variables. Key variables include:
+
+| Category | Variable | Description | Default |
+|----------|----------|-------------|---------|
+| **VM Identity** | `VM_HOSTNAME` | Hostname inside the VM | `hydravm` |
+| | `VM_USERNAME` | Username to create | `hailhydra` |
+| | `VM_PASSWORD` | User password | `hailhydra` |
+| | `VM_SSH_AUTHORIZED_KEY` | SSH public key | - |
+| **Resources** | `DEFAULT_KVM_DARWIN_CPU` | CPU cores (macOS) | `2` |
+| | `DEFAULT_KVM_DARWIN_MEMORY` | RAM in GB (macOS) | `8` |
+| | `DEFAULT_KVM_LINUX_CPU` | CPU cores (Linux) | `2` |
+| | `DEFAULT_KVM_LINUX_MEMORY` | RAM in GB (Linux) | `8` |
+| | `DEFAULT_KVM_DISK_SIZE` | Disk size in GB | `3` |
+| **Network** | `DEFAULT_KVM_HOST_SSHD_PORT` | SSH port forwarding | `5555` |
+| | `DEFAULT_KVM_HOST_CONTAINERD_PORT` | Containerd port | `35000` |
+| | `DEFAULT_KVM_HOST_RIMD_PORT` | RIMD server port | `35001` |
+| | `DEFAULT_NETWORK_PREFIX` | Network prefix | `10.0.2` |
+| **Images** | `DEFAULT_IMAGE` | QCOW2 image filename | Arch-specific |
+| | `DEFAULT_IMAGE_SOURCE_URL` | Image download URL | Debian Cloud |
+| | `COPY_IMAGE_BACKUP` | Preserve base image | `0` |
+| **Features** | `RUN_BARE_KERNEL` | Use kernel/initrd | `0` |
+| | `ENABLE_K3S_DIOD` | Install k3s and diod | `0` |
+| | `DISABLE_CONTAINERD_CSI_PROXY` | Skip CSI proxy install | `0` |
+| | `ENABLE_KRUNKIT` | Use Krunkit backend | `0` |
+
+See the full list in `src/isolated-vm/start-vm.sh` or run with `DEBUG=1`.
+
+#### Examples
+
+**Basic VM with custom resources**:
+```bash
+cd src/isolated-vm
+DEFAULT_KVM_DARWIN_CPU=4 \
+DEFAULT_KVM_DARWIN_MEMORY=16 \
+DEFAULT_KVM_DISK_SIZE=10 \
 ./start-vm.sh
 ```
 
-It will start a VM using local directory image. If run as root (linux) it will also try to share the directories `/var/lib/kubelet` and `/var/log/pods`.
-
-Run the script start-vm.sh to create the VM using the kernel/initrd instead of cloud image
-```
-cd hydra/src/isolated-vm
-RUN_BARE_KERNEL=1 RIMD_ARTIFACT_URL_TOKEN=<access token> ./start-vm.sh
-
-#### Testing
-
-Use csi-grpc-proxy running on the host to convert from a tcp port to an unix socket 
-```
-wget https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-darwin-arm64
-chmod u+x csi-grpc-proxy-v0.5.6-darwin-arm64
-BIND_TO=unix:///tmp/socket-csi PROXY_TO=tcp://127.0.0.1:35000 ./csi-grpc-proxy-v0.5.6-darwin-arm64 &
+**VM with SSH key**:
+```bash
+export VM_SSH_AUTHORIZED_KEY="$(cat ~/.ssh/id_rsa.pub)"
+./start-vm.sh
 ```
 
-Now you can run crictl to send commands to containerd running on the isolated enviroment.  Start/stop/list containers, download/remove images, etc.
-This webpage has examples of how to use crictl `https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/`
-```
-crictl --runtime-endpoint unix:///tmp/socket-csi ps
+**Headless VM**:
+```bash
+KVM_NOGRAPHIC="-nographic" ./start-vm.sh &
 ```
 
-### Crismux (needed if using kubernetes)
-
-Run the script install_crismux.sh to enable crismux
+**RIMDworkspace VM**:
+```bash
+RUN_BARE_KERNEL=1 \
+RIMD_ARTIFACT_URL_TOKEN="your-token" \
+./start-vm.sh
 ```
-cd hydra/src/add-crismux
+
+### Crismux Integration
+
+Crismux enables Kubernetes to use multiple containerd instances, allowing containers to run in isolated VMs.
+
+#### Installation
+
+```bash
+cd src/add-crismux
 ./install_crismux.sh install
 ```
+
+This installs:
+- Crismux in your k3s/k8s cluster
+- "nelly" runtime class for routing containers to isolated VMs
+- Required CRDs and controllers
+
+#### Usage
+
+Create pods with the "nelly" runtime class:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: isolated-pod
+spec:
+  runtimeClassName: nelly
+  containers:
+    - name: test-container
+      image: nginx:latest
+```
+
+The pod will run in the isolated VM environment instead of the host.
+
+### Multi-VM Orchestration
+
+For running multiple VMs simultaneously, see `src/multi-vm/README.md`.
+
+## Testing
+
+### Connecting to Containerd
+
+1. **Download csi-grpc-proxy**:
+
+   ```bash
+   # macOS (ARM64)
+   wget https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-darwin-arm64
+   chmod +x csi-grpc-proxy-v0.5.6-darwin-arm64
+   
+   # Linux
+   wget https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-amd64
+   chmod +x csi-grpc-proxy-v0.5.6-linux-amd64
+   ```
+
+2. **Start the proxy**:
+
+   ```bash
+   BIND_TO=unix:///tmp/socket-csi \
+   PROXY_TO=tcp://127.0.0.1:35000 \
+   ./csi-grpc-proxy-v0.5.6-darwin-arm64 &
+   ```
+
+3. **Use crictl**:
+
+   ```bash
+   # List containers
+   crictl --runtime-endpoint unix:///tmp/socket-csi ps
+   
+   # Pull an image
+   crictl --runtime-endpoint unix:///tmp/socket-csi pull nginx:latest
+   
+   # Run a container
+   crictl --runtime-endpoint unix:///tmp/socket-csi run \
+     --runtime-endpoint unix:///tmp/socket-csi \
+     container-id
+   ```
+
+See [Kubernetes crictl documentation](https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/) for more examples.
+
+## Deployment Options
+
+### Docker
+
+Run isolated-vm in a container:
+
+```bash
+docker run \
+  -d \
+  --rm \
+  --network host \
+  --env "VM_SSH_AUTHORIZED_KEY=$(cat ~/.ssh/id_rsa.pub)" \
+  -v $(pwd)/image:/root/image \
+  -v /var/lib/kubelet:/var/lib/kubelet \
+  -v /var/log/pods:/var/log/pods \
+  --device /dev/kvm:/dev/kvm \
+  ghcr.io/smarter-project/hydra/isolated-vm:main
+
+# View logs
+docker logs -f <container-id>
+
+# SSH to VM
+ssh -p 5555 hailhydra@localhost
+```
+
+### Kubernetes / k3s with Helm
+
+Deploy the complete stack:
+
+#### Add Helm repository
+
+```bash
+helm repo add hydra https://smarter-project.github.io/hydra/
+```
+
+#### Install
+
+```bash
+helm install \
+  --create-namespace \
+  --namespace hydra \
+  --set "isolated-vm.configuration.sshkey=$(cat ~/.ssh/id_rsa.pub)" \
+  hydra hydra/hydra
+```
+
+#### Verify
+
+```bash
+kubectl get pods -n hydra
+kubectl get runtimeclass
+```
+
+**Note**: For persistent storage, set `configuration.local_node_image_dir` to a host path or PVC.
+
+### Standalone k3s Installation
+
+1. **Install k3s** (if not already installed):
+
+   ```bash
+   curl -sfL https://get.k3s.io | sh -
+   ```
+
+2. **Install Crismux**:
+
+   ```bash
+   cd src/add-crismux
+   ./install_crismux.sh install
+   ```
+
+3. **Start isolated VM**:
+
+   ```bash
+   cd src/isolated-vm
+   sudo ./start-vm.sh
+   ```
+
+4. **Create pods with nelly runtime class** (see Crismux Integration section)
+
+## Platform-Specific Notes
+
+### macOS
+
+- **Virtualization**: Uses HVF (Hypervisor.framework) for acceleration
+- **Krunkit**: Supported on macOS, with full support on M4 machines (SME and Vulkan)
+- **Architecture**: Supports both Apple Silicon (ARM64) and Intel (x86_64)
+- **BIOS**: Automatically detected from Homebrew QEMU installation
+
+### Linux
+
+- **Virtualization**: Uses KVM for hardware acceleration (if available)
+- **Filesystem**: 9P mounts for `/var/lib/kubelet` and `/var/log/pods` (when run as root)
+- **Networking**: Supports both user-mode and bridge networking
+- **BIOS**: Paths vary by distribution; defaults provided for common setups
+
+## Architecture Deep Dive
+
+### Host Environment
+
+The host environment runs:
+
+- **k3s**: Lightweight Kubernetes distribution
+- **Kubelet**: Kubernetes node agent
+- **Crismux**: Multi-containerd runtime manager
+- **Containerd (host)**: Primary container runtime
+
+
+Containers scheduled with the "nelly" runtime class are routed to the isolated environment.
+
+### Isolated Environment
+
+The isolated environment provides:
+
+- **Containerd (isolated)**: Independent container runtime
+- **csi-grpc-proxy**: Converts TCP to Unix socket for Kubernetes integration
+- **Network Isolation**: Separate network namespace
+- **Resource Isolation**: Dedicated CPU, memory, and disk
+
+### Communication Flow
+
+```
+Kubelet (Host)
+    │
+    │ (via Crismux)
+    ▼
+Containerd Socket (Host)
+    │
+    │ (via csi-grpc-proxy)
+    ▼
+TCP:localhost:35000
+    │
+    │ (port forward)
+    ▼
+Containerd (Isolated VM)
+    │
+    ▼
+Container Execution
+```
+
+## Troubleshooting
+
+### VM Won't Start
+
+- **Check QEMU installation**: `which qemu-system-aarch64` (or `qemu-system-x86_64`)
+- **Verify permissions**: May need `sudo` on Linux for KVM access
+- **Check disk space**: Ensure sufficient space for images
+- **Review logs**: Run with `DEBUG=1` for detailed output
+
+### Network Issues
+
+- **Port conflicts**: Check if ports 5555, 35000, 35001 are in use
+- **Firewall rules**: Ensure firewall allows port forwarding
+- **VM networking**: Verify network configuration in cloud-init
+
+### Containerd Connection Issues
+
+- **Proxy not running**: Ensure csi-grpc-proxy is active
+- **Wrong endpoint**: Verify `PROXY_TO` points to correct port
+- **VM not ready**: Wait for VM to fully boot and containerd to start
+
+### Image Download Failures
+
+- **Network connectivity**: Verify internet access
+- **Disk space**: Ensure enough space for image download
+- **URL access**: Check if image source URL is accessible
+
+## Contributing
+
+Contributions welcome! Areas for contribution:
+
+- Platform support improvements
+- Documentation enhancements
+- Performance optimizations
+- Security hardening
+- Additional virtualization backends
+
+## License
+
+Part of the Smarter Project. See repository for license details.
+
+## Related Projects
+
+- **Crismux**: Multi-containerd runtime manager
+- **csi-grpc-proxy**: Container runtime interface proxy
+- **RIMDworkspace**: Isolated runtime environment
+
+## Resources
+
+- [Main Documentation](https://github.com/smarter-project/documentation)
+- [Artifact Hub](https://artifacthub.io/packages/search?repo=hydra)
+- [Multi-VM Documentation](src/multi-vm/README.md)
+- [Kubernetes crictl Guide](https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/)
+
+## Support
+
+For issues, questions, or contributions:
+- Open an issue on GitHub
+- Check existing documentation
+- Review troubleshooting section
+
+---
+
+**Hydra**: Many heads, unified purpose. Isolated execution environments for the modern containerized world.

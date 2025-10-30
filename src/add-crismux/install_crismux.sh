@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eu
+
 : ${DEBUG:=0}
 : ${ONLY_EXIT_IN_ERROR:=0}
 [ ${DEBUG} -gt 0 ] && set -x
@@ -12,7 +14,7 @@
 : ${CRISMUX_CONFIG_FILE:="${CRISMUX_CONFIG_DIR}/config.yaml"}
 : ${CRISMUX_EXECUTABLE_FILE:="${K3S_DATA_DIR}/data/current/bin/crismux"}
 : ${CRISMUX_SOCKET_FILE:="${K3S_SOCKET_DIR}/crismux.sock"}
-: ${CRISMUX_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/596/packages/generic/crismux/v1.1.0/crismux"}
+: ${CRISMUX_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/10271/packages/generic/crismux/v1.1.0/crismux"}
 : ${CRISMUX_ARTIFACT_LOCAL:="$(pwd)/crismux"}
 : ${CONTAINERD_SERVICE_NAME:="containerd-k3s"}
 : ${CONTAINERD_SERVICE_FILE:="${SYSTEMD_DIR}/${CONTAINERD_SERVICE_NAME}.service"}
@@ -20,6 +22,8 @@
 : ${CONTAINERD_K3S_CONFIG:="${K3S_DATA_DIR}/agent/etc/containerd/config.toml"}
 : ${CONTAINERD_K3S_CRIS_CONFIG:="${K3S_DATA_DIR}/agent/etc/containerd/config-crismux.toml"}
 : ${CONTAINERD_SOCKET_FILE:="${K3S_SOCKET_DIR}/containerd-crismux.sock"}
+: ${NELLY_HOSTNAME:="localhost"}
+: ${NELLY_PORT:="35000"}
 
 function modify_existing_k3s() {
 	if [ ! -f "${K3S_SERVICE_FILE}" ]
@@ -30,7 +34,7 @@ function modify_existing_k3s() {
 
 	# Change k3s service to point to crismux 
 
-	CONTAINER_RUNTIME=$(grep -- "--container-runtime-endpoint" "${K3S_SERVICE_FILE}")
+	CONTAINER_RUNTIME=$(grep -- "--container-runtime-endpoint" "${K3S_SERVICE_FILE}" || true)
 	if [ ! -z "${CONTAINER_RUNTIME}" ]
 	then
 		echo "k3s service already modified"
@@ -60,7 +64,7 @@ function revert_existing_k3s() {
 
 	# Change k3s service to point to crismux 
 
-	CONTAINER_RUNTIME=$(grep -- "--container-runtime-endpoint" "${K3S_SERVICE_FILE}")
+	CONTAINER_RUNTIME=$(grep -- "--container-runtime-endpoint" "${K3S_SERVICE_FILE}" || true)
 	if [ -z "${CONTAINER_RUNTIME}" ]
 	then
 		echo "k3s service not modified so not changing anything"
@@ -87,7 +91,7 @@ function check_k3s_modified() {
 
 	# check if k3s service to point to crismux 
 
-	CONTAINER_RUNTIME=$(grep -- "--container-runtime-endpoint" "${K3S_SERVICE_FILE}")
+	CONTAINER_RUNTIME=$(grep -- "--container-runtime-endpoint" "${K3S_SERVICE_FILE}" || true)
 	if [ -z "${CONTAINER_RUNTIME}" ]
 	then
 		echo "k3s service not modified"
@@ -123,6 +127,7 @@ Type=notify
 EnvironmentFile=-/etc/default/%N
 EnvironmentFile=-/etc/sysconfig/%N
 EnvironmentFile=-/etc/systemd/system/containerd.service.env
+Environment=PATH=${K3S_DATA_DIR}/data/current/bin:/bin:/sbin:/usr/sbin:/usr/bin
 KillMode=process
 Delegate=yes
 User=root
@@ -217,7 +222,7 @@ function add_crismux() {
 runtimes:
   default: "unix://${CONTAINERD_SOCKET_FILE}"
 # This is the runtime for the secure containers
-  nelly:   "tcp:localhost:35000"
+  nelly:   "tcp:${NELLY_HOSTNAME}:${NELLY_PORT}"
 tls:
   cert: "/path/to/cert.pem"
   key: "/path/to/key.pem"
@@ -314,13 +319,13 @@ function start_services() {
 	i=0
 	while [ $i -lt 12 ]
 	do
-		STATUS=$(systemctl show $1)
+		STATUS=$(systemctl show k3s)
 		if [ $? -gt 0 ]
 		then
 			echo "Something wrong with systemctl ${STATUS}"
 			exit 1
 		fi
-		STATUS_SERVICES=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2)
+		STATUS_SERVICES=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2 || true)
 		if [ "x${STATUS_SERVICES}" != "xrunning" ]
 		then
 			break
@@ -339,10 +344,10 @@ function stop_service() {
 		echo "Something wrong with systemctl ${STATUS}"
 		exit 1
 	fi
-	LOAD_STATUS_SERVICE=$(echo "${STATUS}" | grep LoadState | cut -d "=" -f 2)
-	UNIT_STATUS_SERVICE=$(echo "${STATUS}" | grep UnitFileState | cut -d "=" -f 2)
-	ACTIVE_STATUS_SERVICE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2)
-	SUB_STATUS_SERVICE=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2)
+	LOAD_STATUS_SERVICE=$(echo "${STATUS}" | grep LoadState | cut -d "=" -f 2 || true)
+	UNIT_STATUS_SERVICE=$(echo "${STATUS}" | grep UnitFileState | cut -d "=" -f 2 || true)
+	ACTIVE_STATUS_SERVICE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2 || true)
+	SUB_STATUS_SERVICE=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2 || true)
 	if [ "x${UNIT_STATUS_SERVICE}" == "xenabled" ]
 	then
 		systemctl disable $1
@@ -360,10 +365,10 @@ function report_status_service() {
 		echo "Something wrong with systemctl ${STATUS}"
 		exit 1
 	fi
-	STATUS_SERVICES=$(echo "${STATUS}" | grep UnitFileState | cut -d "=" -f 2)
+	STATUS_SERVICES=$(echo "${STATUS}" | grep UnitFileState | cut -d "=" -f 2 || true)
 	: ${STATUS_SERVICES:="not installed"}
-	STATUS_STATE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2)
-	STATUS_RUN=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2)
+	STATUS_STATE=$(echo "${STATUS}" | grep ActiveState | cut -d "=" -f 2 || true)
+	STATUS_RUN=$(echo "${STATUS}" | grep SubState | cut -d "=" -f 2 || true)
 	echo "$1 service is ${STATUS_SERVICES}, ${STATUS_STATE} and ${STATUS_RUN}"
 }
 

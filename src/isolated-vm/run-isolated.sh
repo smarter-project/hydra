@@ -1,0 +1,26 @@
+#!/bin/bash
+
+: ${VM_HOSTNAME:="hydra-isolated"}
+: ${DEFAULT_DIR_IMAGE:="$(pwd)/image-hydra-isolated"}
+: ${EXTERNAL_9P_KUBELET_MOUNTS:=1}
+: ${COPY_IMAGE_BACKUP:=0}
+: ${DEFAULT_KVM_DISK_SIZE:=16}
+: ${DEFAULT_KVM_HOST_SSHD_PORT:=5556}
+: ${DEFAULT_KVM_PORTS_REDIRECT:="30800:8000;30801:8001;30802:8002"}
+: ${DEFAULT_KVM_DARWIN_CPU:=4}
+: ${PIDFILE}:=$(pwd)/isolated.pid}
+
+
+export VM_HOSTNAME
+export DEFAULT_DIR_IMAGE
+export EXTERNAL_9P_KUBELET_MOUNTS
+export COPY_IMAGE_BACKUP
+export DEFAULT_KVM_DISK_SIZE
+export DEFAULT_KVM_HOST_SSHD_PORT
+export DEFAULT_KVM_PORTS_REDIRECT
+export DEFAULT_KVM_DARWIN_CPU
+export PIDFILE
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+${SCRIPT_DIR}/start-vm.sh

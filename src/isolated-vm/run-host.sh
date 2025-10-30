@@ -1,0 +1,25 @@
+#!/bin/bash
+
+: ${DEFAULT_DIR_IMAGE:="$(pwd)/image-host"}
+: ${DISABLE_CONTAINERD_CSI_PROXY:=1}
+: ${DISABLE_9P_KUBELET_MOUNTS:=1}
+: ${COPY_IMAGE_BACKUP:=1}
+: ${ENABLE_K3S_DIOD:=1}
+: ${DEFAULT_KVM_DISK_SIZE:=25}
+: ${DEFAULT_KVM_PORTS_REDIRECT:="6443:6443;30123:30123;31883:31883;30443:443;30080:80;30700:30700;30900:30900"}
+: ${PIDFILE:=$(pwd)/host.pid}
+#: ${INSTALL_ADDITIONAL_DEBS:="http://http.us.debian.org/debian/pool/main/l/linux/linux-image-6.16.8+deb14-arm64-unsigned_6.16.8-1_arm64.deb"}
+
+export DEFAULT_DIR_IMAGE
+export DISABLE_CONTAINERD_CSI_PROXY
+export DISABLE_9P_KUBELET_MOUNTS
+export COPY_IMAGE_BACKUP
+export ENABLE_K3S_DIOD
+export DEFAULT_KVM_DISK_SIZE
+export DEFAULT_KVM_PORTS_REDIRECT
+export PIDFILE
+#export INSTALL_ADDITIONAL_DEBS
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+$SCRIPT_DIR/start-vm.sh
