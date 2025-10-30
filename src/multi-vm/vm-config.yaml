@@ -1,0 +1,44 @@
+# Multi-VM Configuration
+# This file configures multiple VMs that will be started and connected on a common network
+
+# Network configuration
+network:
+  name: "hydra-net"
+  subnet: "192.168.100.0/24"
+  gateway: "192.168.100.1"
+  dns: ["8.8.8.8", "8.8.4.4"]
+
+# VM configurations
+vms:
+  - name: "vm1"
+    hostname: "hydravm1"
+    ip: "192.168.100.10"
+    mac: "52:54:00:00:00:01"
+    cpu: 2
+    memory: 8
+    disk_size: 3
+    ports:
+      ssh: 5555
+      containerd: 35000
+      rimd: 35001
+
+  - name: "vm2"
+    hostname: "hydravm2"
+    ip: "192.168.100.11"
+    mac: "52:54:00:00:00:02"
+    cpu: 2
+    memory: 8
+    disk_size: 3
+    ports:
+      ssh: 5556
+      containerd: 35002
+      rimd: 35003
+
+# Common VM settings
+common:
+  username: "hailhydra"
+  password: "hailhydra"
+  salt: "123456"
+  image: "debian-12-genericcloud-amd64-20250316-2053.qcow2"
+  kernel_version: "6.12.22+bpo"
+  image_source_url: "https://cloud.debian.org/images/cloud/bookworm/20250316-2053/" 
