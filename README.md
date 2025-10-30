@@ -1,10 +1,10 @@
-# Hydra: IoT Device Emulation and Isolation Framework
+# **Hydra: IoT Device Emulation and Isolation Framework**
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/hydra)](https://artifacthub.io/packages/search?repo=hydra)
 
 Hydra is a comprehensive framework for emulating IoT devices with isolated execution environments. It provides one or two isolated Linux environments, each running in separate virtual machines with independent resource and configuration management. Designed as part of a smart-home security demonstration using AI and LLMs, Hydra enables sophisticated container orchestration scenarios with strong isolation guarantees.
 
-## Overview
+## **Overview**
 
 Hydra enables the creation of isolated execution environments for containers, perfect for:
 
@@ -24,8 +24,11 @@ Hydra enables the creation of isolated execution environments for containers, pe
 - **Container Runtime Isolation**: Each VM runs containerd independently
 - **Network Configuration**: Flexible networking with port forwarding and CSI proxy
 - **Multi-VM Orchestration**: Launch multiple VMs concurrently (see `src/multi-vm/`)
+- **Ready to use and highly configurable**: Works out of the box but allows customizations to satisfy specific requirements   
 
-## Architecture
+## **Architecture**
+
+The following diagram shows two VMs configuration with one running as host enviroment and another running as isolated enviroment. 
 
 ```
 ┌───────────────────────────────────────────┐
@@ -60,10 +63,43 @@ Hydra enables the creation of isolated execution environments for containers, pe
 └───────────────────────────────────────────┘
 ```
 
+The isolated VM can also run directly on the host or inside a container; attaching to a host running k3s/kubernetes. 
+
+```
+┌───────────────────────────────────────────┐
+│                Physical Host              │
+│                                           │
+│     ┌──────────────────────────────┐      │
+│     │       k3s / Kubernetes       │      │
+│     │            ▼                 │      │
+│     │         Kubelet              │      │
+│     │            ▼                 │      │
+│     │     ┌── Crismux ──┐          │      │
+│     │     │             ▼          │      │
+│     │     │         Containerd     │      │
+│     └─────│────────────────────────┘      │
+│           │                               │
+│           │                               │
+│  ┌────────│────────────────────────────┐  │
+│  │        │  Isolated Environment (VM) │  │
+│  │  ┌─────│────────────────────────┐   │  │
+│  │  │     │(TCP → Unix Socket)     │   │  │
+│  │  │     ▼                        │   │  │
+│  │  │   csi-grpc-proxy             │   │  │
+│  │  │     ▼                        │   │  │
+│  │  │  Containerd ("nelly")        │   │  │
+│  │  └──────────────────────────────┘   │  │
+│  │                                     │  │
+│  │  Containers run here with           │  │
+│  │  isolation from host environment    │  │
+│  └─────────────────────────────────────┘  │
+└───────────────────────────────────────────┘
+```
+
 ### Components
 
 1. **Isolated-VM** (`src/isolated-vm/`): Core VM creation and management
-   - QEMU/KVM-based virtualization
+   - QEMU(KVM/HVF) or krunkit(HVF) based virtualization
    - Debian cloud images or RIMDworkspace support
    - Cloud-init configuration (debian cloud images)
    - Port forwarding (SSH, Containerd, RIMD)
@@ -486,7 +522,7 @@ kubectl get runtimeclass
 - **Networking**: Supports both user-mode and bridge networking
 - **BIOS**: Paths vary by distribution; defaults provided for common setups
 
-## Architecture Deep Dive
+## **Architecture Deep Dive**
 
 ### Host Environment
 
