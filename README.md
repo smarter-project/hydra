@@ -28,33 +28,36 @@ Hydra enables the creation of isolated execution environments for containers, pe
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────┐
-│                    Physical Host               │
-│                                                │
-│  ┌─────────────────────────────────────┐       │
-│  │       Host Environment (VM)         │       │
-│  │  ┌──────────────────────────────┐   │       │
-│  │  │   k3s / Kubernetes           │   │       │
-│  │  │   Crismux                    │   │       │
-│  │  │   Containerd (host runtime)  │   │       │
-│  │  │   Kubelet                    │   │       │
-│  │  └──────────────────────────────┘   │       │
-│  │           │                         │       │
-│  │           │ Runtime Class: "nelly"  │       │
-│  └───────────┼─────────────────────────┘       │
-│              │                                 │
-│  ┌───────────▼─────────────────────────┐       │
-│  │    Isolated Environment (VM)        │       │
-│  │  ┌──────────────────────────────┐   │       │
-│  │  │   Containerd (isolated)      │   │       │
-│  │  │   csi-grpc-proxy             │   │       │
-│  │  │   (TCP → Unix Socket)        │   │       │
-│  │  └──────────────────────────────┘   │       │
-│  │                                     │       │
-│  │  Containers run here with           │       │
-│  │  isolation from host environment    │       │
-│  └─────────────────────────────────────┘       │
-└────────────────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│                Physical Host              │
+│                                           │
+│  ┌─────────────────────────────────────┐  │
+│  │               Host Environment (VM) │  │
+│  │  ┌──────────────────────────────┐   │  │
+│  │  │       k3s / Kubernetes       │   │  │
+│  │  │            ▼                 │   │  │
+│  │  │         Kubelet              │   │  │
+│  │  │            ▼                 │   │  │
+│  │  │     ┌── Crismux ──┐          │   │  │
+│  │  │     │             ▼          │   │  │
+│  │  │     │         Containerd     │   │  │
+│  │  └─────│────────────────────────┘   │  │
+│  └────────┼────────────────────────────┘  │
+│           │                               │
+│  ┌────────│────────────────────────────┐  │
+│  │        │  Isolated Environment (VM) │  │
+│  │  ┌─────│────────────────────────┐   │  │
+│  │  │     │(TCP → Unix Socket)     │   │  │
+│  │  │     ▼                        │   │  │
+│  │  │   csi-grpc-proxy             │   │  │
+│  │  │     ▼                        │   │  │
+│  │  │  Containerd ("nelly")        │   │  │
+│  │  └──────────────────────────────┘   │  │
+│  │                                     │  │
+│  │  Containers run here with           │  │
+│  │  isolation from host environment    │  │
+│  └─────────────────────────────────────┘  │
+└───────────────────────────────────────────┘
 ```
 
 ### Components
@@ -62,7 +65,7 @@ Hydra enables the creation of isolated execution environments for containers, pe
 1. **Isolated-VM** (`src/isolated-vm/`): Core VM creation and management
    - QEMU/KVM-based virtualization
    - Debian cloud images or RIMDworkspace support
-   - Cloud-init configuration
+   - Cloud-init configuration (debian cloud images)
    - Port forwarding (SSH, Containerd, RIMD)
    - 9P filesystem mounts for kubelet integration
 
