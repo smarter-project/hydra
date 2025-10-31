@@ -63,7 +63,7 @@ The following diagram shows two VMs configuration with one running as host envir
 └───────────────────────────────────────────┘
 ```
 
-The isolated VM can also run directly on the host or inside a container; attaching to a host running k3s/kubernetes. 
+The isolated VM can also run directly on the host or inside a container. It attachs to a host running k3s/kubernetes. 
 
 ```
 ┌───────────────────────────────────────────┐
@@ -130,7 +130,13 @@ The isolated VM can also run directly on the host or inside a container; attachi
 brew install qemu wget cri-tools
 
 # Optional: For Krunkit support (macOS only, M4 recommended)
-brew install podman krunkit
+brew install podman krunkit git
+# Also needs gvproxy from latest branch. 
+# Install go by following: https://go.dev/doc/install
+git clone https://github.com/containers/gvisor-tap-vsock.git
+cd gvisor-tap-vsock
+make
+# The binary will be located at bin/gvproxy
 ```
 
 #### Linux
