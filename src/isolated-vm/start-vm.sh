@@ -115,6 +115,19 @@ esac
 : ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
 : ${DEFAULT_GVPROXY:="../../../gvisor-tap-vsock/bin/gvproxy"}
 
+if [ ${RUN_BARE_KERNEL} -eq 0 ]
+then
+
+	if [ ! -z "${DEFAULT_KERNEL_VERSION}" -o ${ENABLE_REBOOT_AFTER_INSTALLATION} -gt 0 ]
+	then
+		: ${KRUNKIT_REBOOTS:=2}
+	else
+		: ${KRUNKIT_REBOOTS:=1}
+	fi
+else
+	: ${KRUNKIT_REBOOTS:=0}
+fi
+
 IMAGE_RESTART=0
 BIOS_OPTION=""
 
@@ -217,9 +230,10 @@ function check_image_exists() {
 		if [ ${IMAGE_RESTART} -eq 0 ]
 		then
 			echo "Image ${DEFAULT_IMAGE} exists on disk, reusing"
+			KRUNKIT_REBOOTS=0 # No reboots needed
 			return
 		fi
-		echo "Image ${DEFAULT_IMAGE} exists on disk bt restart is required"
+		echo "Image ${DEFAULT_IMAGE} exists on disk but restart is required"
 		rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}" > /dev/null
 	fi
 	if [ ${COPY_IMAGE_BACKUP} -gt 0 -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}".bkp ]
@@ -1181,7 +1195,8 @@ function krunkitcleanup()
 {
 	echo "killing all processes krunkit (${KRUNKITPID}) and gvproxy (${GVPROXYPID})"
 	kill ${KRUNKITPID} ${GVPROXYPID} 2>/dev/null || true
-	wait ${KRUNKITPID} ${GVPROXYPID} 2>/dev/null || true
+	wait -f ${KRUNKITPID} ${GVPROXYPID} 2>/dev/null || true
+	return
 }
 
 # ----- Main -------------------------------------------------------------------------------------
@@ -1326,9 +1341,14 @@ else
 	GVPROXY_GATEWAYIP=${DEFAULT_GATEWAY_IP}
 	GVPROXY_DEVICEIP=${DEFAULT_DEVICE_IP}
 
-	rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" || true
+	NUM_REBOOT=0
+	while [ ${NUM_REBOOT} -le ${KRUNKIT_REBOOTS} ]
+	do
+		NUM_REBOOT=$((${NUM_REBOOT}+1))
+		echo "Attempting boot #${NUM_REBOOT}, it will reboot at least ${KRUNKIT_REBOOTS} times"
+		rm -f "${DEFAULT_DIR_IMAGE}/gvproxy.pid" "${DEFAULT_DIR_IMAGE}/gvproxy.log" 2> /dev/null || true
 
-	cat << EOF > "${DEFAULT_DIR_IMAGE}/config.yaml"
+		cat << EOF > "${DEFAULT_DIR_IMAGE}/config.yaml"
 log-level: info
 stack:
     mtu: 1500
@@ -1361,68 +1381,70 @@ stack:
 
 EOF
 
-	GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
+		rm "${DEFAULT_DIR_TMP_SOCKET}/network.sock" "${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock" || true
+
+		GVPROXYCMDLINE=${DEFAULT_GVPROXY}'
 	 --listen unix://'${DEFAULT_DIR_TMP_SOCKET}'/network.sock 
 	 -listen-vfkit unixgram://'${DEFAULT_DIR_TMP_SOCKET}/gvproxy.sock'
 	 -config '${DEFAULT_DIR_IMAGE}'/config.yaml
 	 -pid-file '${DEFAULT_DIR_IMAGE}'/gvproxy.pid
 	 -log-file '${DEFAULT_DIR_IMAGE}'/gvproxy.log'
 
-	echo "${GVPROXYCMDLINE}"
+		echo "${GVPROXYCMDLINE}"
 
-	[ ${DRY_RUN_ONLY} -eq 0 ] && {
-		${GVPROXYCMDLINE}&
+		[ ${DRY_RUN_ONLY} -eq 0 ] && {
+			${GVPROXYCMDLINE}&
 
-		echo "Waiting for gvproxy"
-		sleep 2
+			echo "Waiting for gvproxy"
+			sleep 2
 
-		GVPROXYPID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid" 2>/dev/null || true)
-		if [ -z ${GVPROXYPID} ]
-		then
-			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
-			exit 1
-		fi
-		GVPROXY_RUNNING=$(ps -efp ${GVPROXYPID} || true)
-		if [ -z "${GVPROXY_RUNNING}" ]
-		then
-			echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
-			exit 1
-		fi
-
-		trap krunkitcleanup EXIT
-
-		PORTS_TO_OPEN="${DEFAULT_KVM_PORTS_REDIRECT}"
-		PORT_ID=100
-		PORTS_JSON=""
-		while [ ! -z "${PORTS_TO_OPEN}" ]
-		do
-			PORT_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 1)
-			PORTS_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 2-)
-			if [ "${PORT_TO_OPEN}" == "${PORTS_TO_OPEN}" ]
+			GVPROXYPID=$(cat "${DEFAULT_DIR_IMAGE}/gvproxy.pid" 2>/dev/null || true)
+			if [ -z ${GVPROXYPID} ]
 			then
-				PORTS_TO_OPEN=""
-			fi
-			PORT_HOST=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 1)
-			PORT_VM=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 2)
-			if [ -z "${PORT_HOST}" -o -z "${PORT_HOST}" ]
-			then
-				echo "Incorrect specification of ports in this '${PORT_TO_OPEN}'"
+				echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
 				exit 1
 			fi
-			PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_VM}'"}'
-			curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/expose -X POST -d "${PORT_JSON}"
-			PORT_ID=$((${PORT_ID}+1))
-		done
+			GVPROXY_RUNNING=$(ps -efp ${GVPROXYPID} || true)
+			if [ -z "${GVPROXY_RUNNING}" ]
+			then
+				echo "gvproxy failed, please look at log at ${DEFAULT_DIR_IMAGE}/gvproxy.log"
+				exit 1
+			fi
 
-		echo "Ports configured on gvproxy, below is a list of enabled ports"
+			#trap krunkitcleanup EXIT
 
-		curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/all | jq .
-	}
+			PORTS_TO_OPEN="${DEFAULT_KVM_PORTS_REDIRECT}"
+			PORT_ID=100
+			PORTS_JSON=""
+			while [ ! -z "${PORTS_TO_OPEN}" ]
+			do
+				PORT_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 1)
+				PORTS_TO_OPEN=$(echo "${PORTS_TO_OPEN}" | cut -d ';' -f 2-)
+				if [ "${PORT_TO_OPEN}" == "${PORTS_TO_OPEN}" ]
+				then
+					PORTS_TO_OPEN=""
+				fi
+				PORT_HOST=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 1)
+				PORT_VM=$(echo "${PORT_TO_OPEN}" | cut -d ':' -f 2)
+				if [ -z "${PORT_HOST}" -o -z "${PORT_HOST}" ]
+				then
+					echo "Incorrect specification of ports in this '${PORT_TO_OPEN}'"
+					exit 1
+				fi
+				PORT_JSON='{"local":":'${PORT_HOST}'","remote":"'${GVPROXY_DEVICEIP}':'${PORT_VM}'"}'
+				curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/expose -X POST -d "${PORT_JSON}"
+				PORT_ID=$((${PORT_ID}+1))
+			done
 
-	if [ ${RUN_BARE_KERNEL} -eq 0 ]
-	then
-		IMAGE_FORMAT=qcow2
-		CMD_LINE='krunkit 
+			echo "Ports configured on gvproxy, below is a list of enabled ports"
+
+			curl  -s --unix-socket ${DEFAULT_DIR_TMP_SOCKET}/network.sock http:/unix/services/forwarder/all | jq .
+		}
+
+		if [ ${RUN_BARE_KERNEL} -eq 0 ]
+		then
+			IMAGE_FORMAT=qcow2
+			CMD_LINE='krunkit 
  --krun-log-level 3 
  --cpus '${KVM_CPU}'
  --memory '$((${KVM_MEMORY}*1024))'
@@ -1437,9 +1459,9 @@ EOF
  --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen
  '${VIRTFS_9P}
  #--device virtio-blk,path='${DEFAULT_DIR_IMAGE}/${DEFAULT_IMAGE}',format='${IMAGE_FORMAT}'
-	else
-		IMAGE_FORMAT=raw
-		CMD_LINE='krunkit 
+		else
+			IMAGE_FORMAT=raw
+			CMD_LINE='krunkit 
  --krun-log-level 3 
  --cpus '${KVM_CPU}'
  --memory '$((${KVM_MEMORY}*1024))'
@@ -1453,28 +1475,29 @@ EOF
  --device virtio-vsock,port=1025,socketURL='${DEFAULT_DIR_IMAGE}/krunkit.sock',listen 
  --device virtio-vsock,port=1024,socketURL='${DEFAULT_DIR_IMAGE}/krunkit-ignition.sock',listen
  '${VIRTFS_9P}
- 	fi
-
-	if [ ! -z "${APPEND}" ]
-	then
-		echo "${CMD_LINE}
-	  ${APPEND} ${APPEND_OPTIONS}"
-	else
-		echo "${CMD_LINE}"
-	fi
-
-	[ ${DRY_RUN_ONLY} -eq 0 ] && {
+		fi
 
 		if [ ! -z "${APPEND}" ]
 		then
-			${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"&
-			KRUNKITPID=$!
+			echo "${CMD_LINE}
+		  ${APPEND} ${APPEND_OPTIONS}"
 		else
-			${CMD_LINE}&
-			KRUNKITPID=$!
+			echo "${CMD_LINE}"
 		fi
-		wait ${KRUNKITPID}
-	}
+
+		[ ${DRY_RUN_ONLY} -eq 0 ] && {
+			if [ ! -z "${APPEND}" ]
+			then
+				${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"&
+				KRUNKITPID=$!
+			else
+				${CMD_LINE}&
+				KRUNKITPID=$!
+			fi
+			wait ${KRUNKITPID}
+		}
+		krunkitcleanup
+	done
 fi
 
 exit 0

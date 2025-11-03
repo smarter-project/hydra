@@ -291,6 +291,7 @@ Pre-configured scripts for common scenarios:
 - **`run-isolated-bare.sh`**: Isolated environment using RIMDworkspace
 - **`run-isolated-krunkit-krun.sh`**: Isolated environment using Krunkit (macOS M4)
 - **`run-isolated-krunkit-krun-bare.sh`**: RIMDworkspace with Krunkit (macOS M4)
+- **`run-SME.sh`**: Host environment oriented towards SME (kernel-6.16) and no k3s, crismux, or containerd
 
 #### Environment Variables
 
