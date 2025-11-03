@@ -166,8 +166,10 @@ sudo usermod -aG kvm $USER
    cd src/isolated-vm
    ./start-vm.sh
    ```
-
 3. **Access the VM**:
+
+   The first run of an image may require a few reboots of the VM. Debian reboots after some packages are installed and if a new kernel is used, a reboot is required.
+   On Krunkit, the VM console is not visible, use the following ssh command and check the /var/log/cloud-init-output.log to see if the configuration process has finished.
 
    ```bash
    # SSH into the VM (default port 5555)
