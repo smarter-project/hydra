@@ -114,6 +114,8 @@ esac
 : ${DEFAULT_RIMD_FILESYSTEM_FILENAME:="something.qcow2"}
 : ${K3S_VERSION_INSTALL:="v1.32.6+k3s1"}
 : ${DEFAULT_GVPROXY:="../../../gvisor-tap-vsock/bin/gvproxy"}
+: ${SHMEM_TYPE:="none"} # valid=none,nvdimm,ivshmem
+: ${KVM_SHMEM_SIZE:=1}
 
 if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
@@ -632,6 +634,9 @@ package_update: true
 package_upgrade: true
 packages:
 EOF
+	[ ${SHMEM_TYPE}=="nvdimm" ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- ndctl
+EOF
 	[ ${ENABLE_K3S_DIOD} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - diod
 EOF
@@ -817,6 +822,9 @@ runcmd:
 EOF
 	[ ! -z "${INSTALL_ADDITIONAL_DEBS}" ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ /usr/bin/install_debs.sh, "${INSTALL_ADDITIONAL_DEBS}" ]
+EOF
+	[ ${SHMEM_TYPE}=="nvdimm" ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ ndctl, "create-namespace", "--force", "--reconfig=namespace0.0", "--mode", "devdax", "--map", "mem" ]
 EOF
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
@@ -1199,6 +1207,125 @@ function krunkitcleanup()
 	return
 }
 
+function chech_shmem_nvdimm_options()
+{
+	if [ ${ENABLE_KRUNKIT} -gt 0 ]
+	then
+		echo "Shared memory and ENABLE_KRUNKIT(${ENABLE_KRUNKIT}) are incompatible options, please choose one or another, bailing out"
+		exit 1
+	fi
+	if [ "${OS}" == "GNU/Linux" ]
+	then
+		: ${DEFAULT_KVM_SHMEM_PATH:="/dev/shm/shmem-${VM_HOSTNAME}"}
+	elif [ "${OS}" == "Darwin" ]
+	then
+		: ${DEFAULT_KVM_SHMEM_PATH:="${DEFAULT_DIR_IMAGE}/shmem-${VM_HOSTNAME}"}
+	else
+		: ${DEFAULT_KVM_SHMEM_PATH:="${DEFAULT_DIR_IMAGE}/shmem-${VM_HOSTNAME}"}
+	fi
+	KVM_SHMEM=",slots=2,maxmem=$((${KVM_MEMORY}+${KVM_SHMEM_SIZE}*2))g"
+	KVM_MACHINE_TYPE="${KVM_MACHINE_TYPE},nvdimm=on"
+	KVM_SHMEM_DEVICE="-object memory-backend-file,id=hostmem,mem-path=${DEFAULT_KVM_SHMEM_PATH},size=${KVM_SHMEM_SIZE}g,share=on
+ -device nvdimm,memdev=hostmem"
+	echo "Checking if shared memory file ${DEFAULT_KVM_SHMEM_PATH} already exists"
+	if [ ! -e "${DEFAULT_KVM_SHMEM_PATH}" ]
+	then
+		echo "Creating shared memory file ${DEFAULT_KVM_SHMEM_PATH}, since it does not exist"
+		dd if=/dev/zero of=${DEFAULT_KVM_SHMEM_PATH} bs=1m count="$((${KVM_SHMEM_SIZE}*1024+2))" || {
+			echo "File creation failed, pleach check permissions"
+			exit 1
+		}
+	else
+		if [ "${OS}" == "GNU/Linux" ]
+		then
+			FILE_SIZE=$(stat --printf="%s" ${DEFAULT_KVM_SHMEM_PATH})
+		elif [ "${OS}" == "Darwin" ]
+		then
+			FILE_SIZE=$(stat -f "%z" ${DEFAULT_KVM_SHMEM_PATH})
+		else
+			FILE_SIZE=$(stat -f "%z" ${DEFAULT_KVM_SHMEM_PATH})
+		fi
+		echo "File ${DEFAULT_KVM_SHMEM_PATH} for shared memory exists with ${FILE_SIZE} bytes"
+		if [ ${FILE_SIZE} -lt $(( (${KVM_SHMEM_SIZE}*1024+2)*1024)) ]
+		then
+			echo "Increasing the size since the file ishared memory file ${DEFAULT_KVM_SHMEM_PATH} is too smallt"
+			dd if=/dev/zero of=${DEFAULT_KVM_SHMEM_PATH} bs=1m count="$((${KVM_SHMEM_SIZE}*1024+2))" || {
+				echo "File creation failed, pleach check permissions"
+				exit 1
+			}
+		fi
+	fi
+}
+
+function chech_shmem_ivshmem_options()
+{
+	if [ ${ENABLE_KRUNKIT} -gt 0 -o "${OS}" == "Darwin" ]
+	then
+		echo "Shared memory and ENABLE_KRUNKIT(${ENABLE_KRUNKIT}) are incompatible options or running on MacOs, please choose one or another, bailing out"
+		exit 1
+	fi
+	if [ "${OS}" == "GNU/Linux" ]
+	then
+		: ${DEFAULT_KVM_SHMEM_PATH:="/dev/shm/shmem-${VM_HOSTNAME}"}
+	elif [ "${OS}" == "Darwin" ]
+	then
+		: ${DEFAULT_KVM_SHMEM_PATH:="${DEFAULT_DIR_IMAGE}/shmem-${VM_HOSTNAME}"}
+	else
+		: ${DEFAULT_KVM_SHMEM_PATH:="${DEFAULT_DIR_IMAGE}/shmem-${VM_HOSTNAME}"}
+	fi
+	KVM_SHMEM=""
+	KVM_SHMEM_DEVICE="-object memory-backend-file,id=hostmem,mem-path=${DEFAULT_KVM_SHMEM_PATH},size=${KVM_SHMEM_SIZE}g,share=on
+ -device ivshmem-plain,memdev=hostmem"
+	echo "Checking if shared memory file ${DEFAULT_KVM_SHMEM_PATH} already exists"
+	if [ ! -e "${DEFAULT_KVM_SHMEM_PATH}" ]
+	then
+		echo "Creating shared memory file ${DEFAULT_KVM_SHMEM_PATH}, since it does not exist"
+		dd if=/dev/null of=${DEFAULT_KVM_SHMEM_PATH} bs=1M count="$((${KVM_SHMEM_SIZE}*1024))" || {
+			echo "File creation failed, pleach check permissions"
+			exit 1
+		}
+	else
+		if [ "${OS}" == "GNU/Linux" ]
+		then
+			FILE_SIZE=$(stat --printf="%s" ${DEFAULT_KVM_SHMEM_PATH})
+		elif [ "${OS}" == "Darwin" ]
+		then
+			FILE_SIZE=$(stat -f "%z" ${DEFAULT_KVM_SHMEM_PATH})
+		else
+			FILE_SIZE=$(stat -f "%z" ${DEFAULT_KVM_SHMEM_PATH})
+		fi
+		if [ ${FILE_SIZE} -lt $(( (${KVM_SHMEM_SIZE}*1024)*1024)) ]
+		then
+			echo "Increasing the size since the file ishared memory file ${DEFAULT_KVM_SHMEM_PATH} is too smallt"
+			dd if=/dev/zero of=${DEFAULT_KVM_SHMEM_PATH} bs=1m count="$((${KVM_SHMEM_SIZE}*1024))" || {
+				echo "File creation failed, pleach check permissions"
+				exit 1
+			}
+		fi
+	fi
+}
+
+function check_shmem_options()
+{
+	KVM_SHMEM=""
+	KVM_SHMEM_DEVICE=""
+
+	case ${SHMEM_TYPE} in
+		none)
+			;;
+		nvdimm)
+			chech_shmem_nvdimm_options
+			;;
+		ivshmem)
+			chech_shmem_ivshmem_options
+			;;
+		*)
+			echo "Unregconized type of shared memory ${SHMEM_TYPE}, available are none, nvdimm or ivshmem"
+			exit 1
+			;;
+	esac
+}
+
 # ----- Main -------------------------------------------------------------------------------------
 
 check_image_directory
@@ -1215,6 +1342,8 @@ then
 	check_kvm_kvm_hvf
 
 	check_if_bios_needed
+
+	check_shmem_options
 else
 	check_requirements krunkit "${DEFAULT_GVPROXY}"
 
@@ -1272,7 +1401,7 @@ then
 	if [ ${RUN_BARE_KERNEL} -eq 0 ]
 	then
 		CMD_LINE='qemu-system-'${ARCH_M}'
- -m '${KVM_MEMORY}'g
+ -m '${KVM_MEMORY}'g'${KVM_SHMEM}'
  -smp '${KVM_CPU}'
  -M '${KVM_MACHINE_TYPE}'
  '${HW_ACCEL}'
@@ -1286,6 +1415,7 @@ then
  -device virtio-blk-pci,drive=hd0
  -device virtio-net-pci,netdev=net0,mac=52:54:00:08:06:8b
  -netdev user,id=net0'${REDIRECT_PORT}'
+ '${KVM_SHMEM_DEVICE}'
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
  '${KVM_NOGRAPHIC}
@@ -1294,7 +1424,7 @@ then
 		APPEND="-append"
 
 		CMD_LINE='qemu-system-'${ARCH_M}'
- -m '${KVM_MEMORY}'g
+ -m '${KVM_MEMORY}'g'${KVM_SHMEM}'
  -M '${KVM_MACHINE_TYPE}',gic-version=max
  -smp '${KVM_CPU}'
  '${HW_ACCEL}'
@@ -1311,6 +1441,7 @@ then
  -drive if=none,id=drive1,format=qcow2,file='${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}'
  -device virtio-blk-device,id=drv0,drive=drive1
  -serial mon:stdio
+ '${KVM_SHMEM_DEVICE}'
  '${VIRTFS_9P}'
  '${VIRTIO_GPU}'
  '${KVM_NOGRAPHIC}

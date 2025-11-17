@@ -25,6 +25,7 @@ Hydra enables the creation of isolated execution environments for containers, pe
 - **Network Configuration**: Flexible networking with port forwarding and CSI proxy
 - **Multi-VM Orchestration**: Launch multiple VMs concurrently (see `src/multi-vm/`)
 - **Ready to use and highly configurable**: Works out of the box but allows customizations to satisfy specific requirements   
+- **Support shared memory with VMs**: On QEMU nvdimm, ivshmem (linux-only) are supported.
 
 ## **Architecture**
 
@@ -293,7 +294,7 @@ Pre-configured scripts for common scenarios:
 - **`run-isolated-bare.sh`**: Isolated environment using RIMDworkspace
 - **`run-isolated-krunkit-krun.sh`**: Isolated environment using Krunkit (macOS M4)
 - **`run-isolated-krunkit-krun-bare.sh`**: RIMDworkspace with Krunkit (macOS M4)
-- **`run-SME.sh`**: Host environment oriented towards SME (kernel-6.16) and no k3s, crismux, or containerd
+- **`run-SME.sh`**: Host environment oriented towards SME (kernel-6.16) and no pre-installed application
 
 #### Environment Variables
 
@@ -310,6 +311,7 @@ The `start-vm.sh` script is configured via environment variables. Key variables 
 | | `DEFAULT_KVM_LINUX_CPU` | CPU cores (Linux) | `2` |
 | | `DEFAULT_KVM_LINUX_MEMORY` | RAM in GB (Linux) | `8` |
 | | `DEFAULT_KVM_DISK_SIZE` | Disk size in GB | `3` |
+| | `KVM_SHMEM_SIZE` | Shared memory size in GB | `1` |
 | **Network** | `DEFAULT_KVM_HOST_SSHD_PORT` | SSH port forwarding | `5555` |
 | | `DEFAULT_KVM_HOST_CONTAINERD_PORT` | Containerd port | `35000` |
 | | `DEFAULT_KVM_HOST_RIMD_PORT` | RIMD server port | `35001` |
@@ -321,6 +323,7 @@ The `start-vm.sh` script is configured via environment variables. Key variables 
 | | `ENABLE_K3S_DIOD` | Install k3s and diod | `0` |
 | | `DISABLE_CONTAINERD_CSI_PROXY` | Skip CSI proxy install | `0` |
 | | `ENABLE_KRUNKIT` | Use Krunkit backend | `0` |
+| | `SHMEM_TYPE` | Share memory device type none,nvdimm,ivshmem | `none` |
 
 See the full list in `src/isolated-vm/start-vm.sh` or run with `DEBUG=1`.
 
