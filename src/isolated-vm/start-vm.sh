@@ -1280,7 +1280,7 @@ function chech_shmem_ivshmem_options()
 	if [ ! -e "${DEFAULT_KVM_SHMEM_PATH}" ]
 	then
 		echo "Creating shared memory file ${DEFAULT_KVM_SHMEM_PATH}, since it does not exist"
-		dd if=/dev/null of=${DEFAULT_KVM_SHMEM_PATH} bs=1M count="$((${KVM_SHMEM_SIZE}*1024))" || {
+		dd if=/dev/zero of=${DEFAULT_KVM_SHMEM_PATH} bs=1M count="$((${KVM_SHMEM_SIZE}*1024))" || {
 			echo "File creation failed, pleach check permissions"
 			exit 1
 		}
