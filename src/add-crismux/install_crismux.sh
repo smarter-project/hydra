@@ -4,6 +4,20 @@ set -eu
 
 : ${DEBUG:=0}
 : ${ONLY_EXIT_IN_ERROR:=0}
+OS=$(uname -o)
+ARCH_M=$(uname -m)
+case ${ARCH_M} in
+	x86_64)
+		ARCH_GEN=amd64
+		ARCH=amd64;;
+	arm64|aarch64)
+		ARCH=arm64
+		ARCH_GEN=arm
+		ARCH_M=aarch64;;
+	*)
+		ARCH=${ARCH_M}
+		ARCH_GEN=${ARCH_M};;
+esac
 [ ${DEBUG} -gt 0 ] && set -x
 : ${SYSTEMD_DIR:="/etc/systemd/system"}
 : ${K3S_SERVICE_FILE:="${SYSTEMD_DIR}/k3s.service"}
@@ -14,7 +28,8 @@ set -eu
 : ${CRISMUX_CONFIG_FILE:="${CRISMUX_CONFIG_DIR}/config.yaml"}
 : ${CRISMUX_EXECUTABLE_FILE:="${K3S_DATA_DIR}/data/current/bin/crismux"}
 : ${CRISMUX_SOCKET_FILE:="${K3S_SOCKET_DIR}/crismux.sock"}
-: ${CRISMUX_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/10271/packages/generic/crismux/v1.1.0/crismux"}
+: ${CRISMUX_VERSION:="v1.2.2"}
+: ${CRISMUX_ARTIFACT_URL:="https://github.com/smarter-project/crismux/releases/download/${CRISMUX_VERSION}/crismux-${CRISMUX_VERSION}-linux-${ARCH}.tar.gz"}
 : ${CRISMUX_ARTIFACT_LOCAL:="$(pwd)/crismux"}
 : ${CONTAINERD_SERVICE_NAME:="containerd-k3s"}
 : ${CONTAINERD_SERVICE_FILE:="${SYSTEMD_DIR}/${CONTAINERD_SERVICE_NAME}.service"}
@@ -204,7 +219,19 @@ function add_crismux() {
 	fi
 	if [ ! -z "${CRISMUX_ARTIFACT_URL}" ]
 	then
-		wget -O ${CRISMUX_EXECUTABLE_FILE} "${CRISMUX_ARTIFACT_URL}"
+		if [[ "${CRISMUX_ARTIFACT_URL}" =~ .*\.tar.gz ]]
+		then
+			wget -O crismux-temp.tar.gz "${CRISMUX_ARTIFACT_URL}"
+			tar xvf crismux-temp.tar.gz crismux-${CRISMUX_VERSION}-linux-${ARCH} >/dev/null 2>&1 || echo "tar failed"
+			if [ ! -e crismux-${CRISMUX_VERSION}-linux-${ARCH} ]
+			then
+				echo "Crismux not found, please check if the correct URL was given, ${CRISMUX_ARTIFACT_URL}"
+				exit 1
+			fi
+			mv crismux-${CRISMUX_VERSION}-linux-${ARCH} ${CRISMUX_EXECUTABLE_FILE}
+		else
+			wget -O ${CRISMUX_EXECUTABLE_FILE} "${CRISMUX_ARTIFACT_URL}"
+		fi
 		if [ $? -gt 0 ]
 		then
 			echo "getting ${CRISMUX_EXECUTABLE_FILE} from ${CRISMUX_ARTIFACT_URL} failed"
