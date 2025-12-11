@@ -22,6 +22,7 @@ case ${ARCH_M} in
 esac
 [ ${DEBUG:=0} -gt 0 ] && set -x
 : ${DRY_RUN_ONLY:=0}
+: ${KVM_DAEMONIZE:=0}
 : ${RUN_BARE_KERNEL:=0}
 : ${ENABLE_KRUNKIT:=0}
 : ${ENABLE_VSOCK_LINUX:=0}
@@ -1451,18 +1452,28 @@ then
 	if [ ! -z "${APPEND}" ]
 	then
 		echo "${CMD_LINE}
-	  ${APPEND} ${APPEND_OPTIONS}"
+	  ${APPEND} ${APPEND_OPTIONS}" 
 	else
 		echo "${CMD_LINE}"
 	fi
 
 	[ ${DRY_RUN_ONLY} -gt 0 ] && exit 0
 
-	if [ ! -z "${APPEND}" ]
+	if [ ${KVM_DAEMONIZE} -eq 0 ]
 	then
-		exec ${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"
+		if [ ! -z "${APPEND}" ]
+		then
+			exec ${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}"
+		else
+			exec ${CMD_LINE}
+		fi
 	else
-		exec ${CMD_LINE}
+		if [ ! -z "${APPEND}" ]
+		then
+			exec ${CMD_LINE} ${APPEND} "${APPEND_OPTIONS}" > "${DEFAULT_DIR_IMAGE}/KVM.log" 2>&1 < /dev/zero &
+		else
+			exec ${CMD_LINE} > "${DEFAULT_DIR_IMAGE}/KVM.log" 2>&1 < /dev/zero &
+		fi
 	fi
 else
 	create_tmp_socket_krunkit
