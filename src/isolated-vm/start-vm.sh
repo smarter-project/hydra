@@ -643,6 +643,7 @@ EOF
 EOF
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - containerd
+- imgcrypt
 - 9mount
 EOF
 	[ ! -z "${KERNEL_VERSION}" ] &&	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
@@ -660,7 +661,6 @@ EOF
     [Service]
     Environment="PROXY_TO=unix:///run/containerd/containerd.sock"
     Environment="BIND_TO=tcp://0.0.0.0:35000"
-    ExecStartPre=/usr/bin/wait_for_mounts.sh
     ExecStart=/usr/bin/csi-grpc-proxy
     
     Type=simple
@@ -726,20 +726,66 @@ EOF
     exit 0
   path: /usr/bin/wait_for_mounts.sh
 - content: |
-    [plugins."io.containerd.grpc.v1.cri".containerd]
+    version = 2
+    
+    [debug]
+        level = "debug"
+      
+    [stream_processors]
+        [stream_processors."io.containerd.ocicrypt.decoder.v1.tar.gzip"]
+            accepts = ["application/vnd.oci.image.layer.v1.tar+gzip+encrypted"]
+            returns = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+            path = "/usr/bin/ctd-decoder-rimd"
+            env = ["OCICRYPT_KEYPROVIDER_CONFIG=/ocicrypt-keyprovider.conf"]
+            key_provider = "rimd"
+        [stream_processors."io.containerd.ocicrypt.decoder.v1.tar.zstd"]
+            accepts = ["application/vnd.oci.image.layer.v1.tar+zstd+encrypted"]
+            returns = "application/vnd.oci.image.layer.v1.tar+zstd"
+            path = "/usr/bin/ctd-decoder-rimd"
+            env = ["OCICRYPT_KEYPROVIDER_CONFIG=/ocicrypt-keyprovider.conf"]
+            key_provider = "rimd"
+        [stream_processors."io.containerd.ocicrypt.decoder.v1.tar"]
+            accepts = ["application/vnd.oci.image.layer.v1.tar+encrypted"]
+            returns = "application/vnd.oci.image.layer.v1.tar"
+            path = "/usr/bin/ctd-decoder-rimd"
+            env = ["OCICRYPT_KEYPROVIDER_CONFIG=/ocicrypt-keyprovider.conf"]
+            key_provider = "rimd"
+    
+    [plugins]
+        [plugins."io.containerd.keyprovider.v1".rimd]
+            path = "/usr/bin/rimd-keyprovider-proxy-dummy"
+            args = []
+        [plugins."io.containerd.grpc.v1.cri"]
+            [plugins."io.containerd.grpc.v1.cri".cni]
+                bin_dir = "/usr/lib/cni"
+                conf_dir = "/etc/cni/net.d"
+        [plugins."io.containerd.internal.v1.opt"]
+            path = "/var/lib/containerd/opt"
+        [plugins."io.containerd.grpc.v1.cri".containerd]
             default_runtime_name = "nelly"
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly]
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly]
             privileged_without_host_devices = false
             runtime_type = "io.containerd.runc.v2"
-    
-            [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly.options]
-              BinaryName = "/usr/sbin/runc"
-              NoPivotRoot = true
-              CriuImagePath = ""
-              CriuPath = ""
-              CriuWorkPath = ""
-              IoGid = 0
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nelly.options]
+            BinaryName = "/usr/sbin/runc"
+            NoPivotRoot = true
+            CriuImagePath = ""
+            CriuPath = ""
+            CriuWorkPath = ""
+            IoGid = 0
   path: /etc/containerd/config.toml.new
+- content: |
+     {
+       "key-providers": {
+         "rimd": {
+           "cmd": {
+             "path": "/usr/bin/rimd-keyprovider-proxy-dummy",
+             "args": []
+           }
+         }
+       }
+     }
+  path: /etc/containerd/ocicrypt-keyprovider-dummy.conf
 EOF
 	[ ${ENABLE_K3S_DIOD} -gt 0 ] && {
 		cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
@@ -830,7 +876,8 @@ EOF
 	[ ${DISABLE_CONTAINERD_CSI_PROXY} -eq 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ wget, "${DEFAULT_CSI_GRPC_PROXY_URL}${ARCH}", -O, /usr/bin/csi-grpc-proxy ]
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
-- [ bash,"-c","cat /etc/containerd/config.toml.new >> /etc/containerd/config.toml"]
+- [ bash,"-c","mv /etc/containerd/config.toml.new /etc/containerd/config.toml"]
+- [ bash,"-c","sed -ie 's[ExecStartPre=-[ExecStartPre=/usr/bin/wait_for_mounts.sh\\\nExecStartPre=-[g' /usr/lib/systemd/system/containerd.service"]
 EOF
 	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","cat /etc/issue.hydra >> /etc/issue"]
