@@ -35,6 +35,7 @@ esac
 : ${ADDITIONAL_KERNEL_COMMANDLINE:=""}
 : ${DISABLE_9P_KUBELET_MOUNTS:=0}
 : ${DISABLE_CONTAINERD_CSI_PROXY:=0}
+: ${ENABLE_CONTAINERD_RIMD_PROXY:=0}
 : ${ENABLE_K3S_DIOD:=0}
 : ${ENABLE_VIRTIO_GPU:=0}
 : ${DEFAULT_VIRTIO_GPU_VRAM:=4}
@@ -753,8 +754,8 @@ EOF
     
     [plugins]
         [plugins."io.containerd.keyprovider.v1".rimd]
-            path = "/usr/bin/rimd-keyprovider-proxy-dummy"
-            args = []
+            path = "/usr/bin/rimd-keyprovider-proxy"
+            args = ["--dummy"]
         [plugins."io.containerd.grpc.v1.cri"]
             [plugins."io.containerd.grpc.v1.cri".cni]
                 bin_dir = "/usr/lib/cni"
@@ -779,7 +780,7 @@ EOF
        "key-providers": {
          "rimd": {
            "cmd": {
-             "path": "/usr/bin/rimd-keyprovider-proxy-dummy",
+             "path": "/usr/bin/rimd-keyprovider-proxy",
              "args": []
            }
          }
@@ -818,6 +819,37 @@ EOF
   path: /usr/bin/install_crismux.sh
 EOF
         }
+	[ ${ENABLE_CONTAINERD_RIMD_PROXY} -gt 0 ] && {
+                cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- encoding: b64
+  owner: root:root
+  permissions: '0744'
+  content: |
+EOF
+                base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+
+                cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+  path: /usr/bin/ctr-enc
+- encoding: b64
+  owner: root:root
+  permissions: '0744'
+  content: |
+EOF
+                base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctd-decoder" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+
+                cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+  path: /usr/bin/ctd-decoder
+- encoding: b64
+  owner: root:root
+  permissions: '0744'
+  content: |
+EOF
+                base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/irimd-keyprovider-proxy" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+
+                cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+  path: /usr/bin/rimd-keyprovider-proxy
+EOF
+	}
 	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - owner: root:root
   permissions: '0744'
@@ -1416,6 +1448,8 @@ if [ ${RUN_BARE_KERNEL} -eq 0 ]
 then
 	NEW_CLOUD_INIT_DIR="${DEFAULT_DIR_IMAGE}/cloud-init.dir.new"
 	EXISTING_CLOUD_INIT_DIR="${DEFAULT_DIR_IMAGE}/cloud-init.dir"
+
+	[ ${ENABLE_CONTAINERD_RIMD_PROXY} -gt 0 ] && check_kernel_image
 
 	cloud_init_create
 
