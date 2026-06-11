@@ -104,8 +104,8 @@ esac
 : ${DEFAULT_KVM_HOST_RIMD_PORT:="35001"}
 : ${DEFAULT_CSI_GRPC_PROXY_URL:="https://github.com/democratic-csi/csi-grpc-proxy/releases/download/v0.5.6/csi-grpc-proxy-v0.5.6-linux-"}
 : ${DEFAULT_KVM_PORTS_REDIRECT:=""} # format is <external>:<internal> separated by semicolon
-: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/research%2Fsmarter%2Fedgeai%2Frimdworkspace/packages/generic/rimdworkspace/Q3_2025_1/rimdworkspace.tar.gz"}
-: ${DEFAULT_RIMD_ARTIFACT_DIR:="rimdworkspace_Q3_2025_1"}
+: ${DEFAULT_RIMD_ARTIFACT_URL:="https://gitlab.arm.com/api/v4/projects/10711/packages/generic/rimdworkspace/Q2_2026_1/rimdworkspace.tar.gz"}
+: ${DEFAULT_RIMD_ARTIFACT_DIR:="rimdworkspace_Q2_2026_1"}
 : ${RIMD_ARTIFACT_URL_USER:=""}
 : ${RIMD_ARTIFACT_URL_PASS:=""}
 : ${RIMD_ARTIFACT_URL_TOKEN:=""}
@@ -335,7 +335,9 @@ function download_rimd_artifact() {
 		exit 1
 	fi
 	mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}.download" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" 2>/dev/null
+}
 
+function process_rimd_artifact() {
 	echo "Processing artifact ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 	if [[ ${DEFAULT_RIMD_ARTIFACT_FILENAME} =~ ^.*\.zip$ ]]
 	then
@@ -347,9 +349,9 @@ function download_rimd_artifact() {
 		echo "File termination unknown so unable to unpack it, bailing out"
 		exit 1
 	fi
-	if [ ! -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
-	     -o ! -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
-	     -o ! -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+	NOT_FOUND=0
+	check_rimdworkspace_files
+	if [ ${NOT_FOUND} -gt 0 ]
 	then
 		# File was opened but artifacts are in a subdirectory, lets try to get them from there
 		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${RIMD_KERNEL_FILENAME}" ]
@@ -358,19 +360,62 @@ function download_rimd_artifact() {
 			echo "Kernel requested version ${RIMD_KERNEL_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}, trying a non-versioned one"
 			RIMD_KERNEL_FILENAME=${DEFAULT_RIMD_KERNEL_FILENAME}
 		fi
-		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${RIMD_KERNEL_FILENAME}" "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" 2>/dev/null || {
+		ln -s "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${RIMD_KERNEL_FILENAME}" "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" 2>/dev/null || {
 			echo "File ${RIMD_KERNEL_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 			exit 1
 		}
-		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" 2>/dev/null ||  {
+		ln -s "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${DEFAULT_RIMD_IMAGE_FILENAME}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" 2>/dev/null ||  {
 			echo "File ${DEFAULT_RIMD_IMAGE_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 			exit 1
 		}
-		mv "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" 2>/dev/null || {
+		ln -s "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" 2>/dev/null || {
 			echo "File ${DEFAULT_RIMD_FILESYSTEM_FILENAME} not found on ${DEFAULT_RIMD_ARTIFACT_DIR} from ${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 			exit 1
 		}
 	fi
+	if [ ${ENABLE_CONTAINERD_RIMD_PROXY} -gt 0 ]
+	then
+		NOK=0
+		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc" ]
+		then
+			echo "File  ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc not found, file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME} is incomplete"
+		       	NOK=1
+		fi
+		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctd-decoder" ]
+		then
+			echo "File  ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc not found, file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME} is incomplete"
+		       	NOK=1
+		fi
+		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/rimd-keyprovider-proxy" ]
+		then	
+			echo "File  ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc not found, file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME} is incomplete"
+		       	NOK=1
+			
+		fi
+		if [ ${NOK} -gt 0 ]
+		then
+			exit 1
+		fi
+	fi
+}
+
+function check_rimdworkspace_files() {
+	NOT_FOUND=0
+	for fileName in "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
+		        "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
+			"${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" \
+			"${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc" \
+			"${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctd-decoder" \
+			"${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/rimd-keyprovider-proxy" 
+	do
+		if [ -e "${fileName}" ]
+		then
+			continue
+		fi
+		echo "File ${fileName} not found"
+		NOT_FOUND=1
+	done
+	[ ${NOT_FOUND} -gt 0 ] && echo "Check downloaded file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}, it is incomplete"
 }
 
 function check_kernel_image() {
@@ -378,9 +423,10 @@ function check_kernel_image() {
 	[ ! -z ${DEFAULT_RIMD_KERNEL_VERSION} ] && RIMD_KERNEL_FILENAME="${RIMD_KERNEL_FILENAME}${DEFAULT_RIMD_KERNEL_VERSION}"
 	if [ ${IMAGE_RESTART} -eq 0 ]
 	then
-		if [ -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" \
-		     -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" \
-		     -a -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ]
+
+		NOT_FOUND=0
+		check_rimdworkspace_files
+		if [ ${NOT_FOUND} -eq 0 ]
 		then
 			if [ ${ENABLE_KRUNKIT} -eq 0 ]
 			then
@@ -396,13 +442,16 @@ function check_kernel_image() {
 			create_qcow_krunkit
 			return
 		fi
-		[ -f "${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME}" ] || echo "Downloading a release since file ${DEFAULT_DIR_IMAGE}/${RIMD_KERNEL_FILENAME} does not exist"
-		[ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME}" ] || echo "Downloading a release since file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_IMAGE_FILENAME} does not exist"
-		[ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME}" ] || echo "Downloading a release since file ${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_FILESYSTEM_FILENAME} does not exist"
-		[ -f "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" ] || download_rimd_artifact
+		if [ ! -e "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}" ] 
+		then
+			download_rimd_artifact
+		fi
+		process_rimd_artifact
 	else
 		echo "Image restart required so not reusing what is disk"
+		rm "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_FILENAME}"
 		download_rimd_artifact
+		process_rimd_artifact
 	fi
 
 	if [ ${ENABLE_KRUNKIT} -eq 0 ]
@@ -829,7 +878,7 @@ EOF
                 base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctr-enc" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
 
                 cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-  path: /usr/bin/ctr-enc
+  path: /usr/bin/ctr-enc.new
 - encoding: b64
   owner: root:root
   permissions: '0744'
@@ -838,16 +887,16 @@ EOF
                 base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/ctd-decoder" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
 
                 cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-  path: /usr/bin/ctd-decoder
+  path: /usr/bin/ctd-decoder.new
 - encoding: b64
   owner: root:root
   permissions: '0744'
   content: |
 EOF
-                base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/irimd-keyprovider-proxy" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
+                base64 -w 80 -i "${DEFAULT_DIR_IMAGE}/${DEFAULT_RIMD_ARTIFACT_DIR}/executables/rimd-keyprovider-proxy" | sed -e "s/^/    /" >> "${NEW_CLOUD_INIT_DIR}/user-data"
 
                 cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
-  path: /usr/bin/rimd-keyprovider-proxy
+  path: /usr/bin/rimd-keyprovider-proxy.new
 EOF
 	}
 	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
@@ -910,6 +959,11 @@ EOF
 - [ chmod, "a+x", /usr/bin/csi-grpc-proxy ]
 - [ bash,"-c","mv /etc/containerd/config.toml.new /etc/containerd/config.toml"]
 - [ bash,"-c","sed -ie 's[ExecStartPre=-[ExecStartPre=/usr/bin/wait_for_mounts.sh\\\nExecStartPre=-[g' /usr/lib/systemd/system/containerd.service"]
+EOF
+	[ ${ENABLE_CONTAINERD_RIMD_PROXY} -gt 0 ] && cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
+- [ bash,"-c","mv /usr/bin/ctr-enc.new /usr/bin/ctr-enc"]
+- [ bash,"-c","mv /usr/bin/ctd-decoder.new /usr/bin/ctd-decoder"]
+- [ bash,"-c","mv /usr/bin/rimd-keyprovider-proxy.new /usr/bin/rimd-keyprovider-proxy.new"]
 EOF
 	cat >> "${NEW_CLOUD_INIT_DIR}/user-data" <<EOF
 - [ bash,"-c","cat /etc/issue.hydra >> /etc/issue"]
